@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Migration Console — Data Migration Tool</title>
+<meta name="viewport" content="width=1440"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root, [data-theme="light"] {
+    --bg: #f9fafb;
+    --panel: #ffffff;
+    --panel-2: #f2f4f3;
+    --zebra: #fafcfb;
+    --border: #dae3e0;
+    --border-strong: #b8cec9;
+    --text: #0c1f1b;
+    --text-2: #334f4a;
+    --text-3: #678b86;
+    --text-4: #9bbdb8;
+    --navy: #0e7268;
+    --navy-700: #0a5850;
+    --navy-50: #e8f4f2;
+    --green: #0c9e6a;
+    --green-50: #e2f5ec;
+    --amber: #b87219;
+    --amber-50: #fdf0de;
+    --red: #c42f2f;
+    --red-50: #fce6e6;
+    --gray: #678b86;
+    --gray-50: #f2f4f3;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+}
+[data-theme="dark"] {
+    --bg: #0d1614;
+    --panel: #141f1d;
+    --panel-2: #1a2724;
+    --zebra: #161f1d;
+    --border: #243330;
+    --border-strong: #2e4440;
+    --text: #ddf0ec;
+    --text-2: #9bbdb8;
+    --text-3: #607d79;
+    --text-4: #3d5450;
+    --navy: #3dbfb0;
+    --navy-700: #5cd0c2;
+    --navy-50: #152822;
+    --green: #35cc88;
+    --green-50: #0d2318;
+    --amber: #e8a84a;
+    --amber-50: #271a0a;
+    --red: #e06060;
+    --red-50: #261212;
+    --gray: #607d79;
+    --gray-50: #1a2724;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+}
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 12px; line-height: 1.35; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; font-size: inherit; color: inherit; }
+  #root { height: 100vh; }
+
+  .mig-td { padding: 3px 8px !important; }
+
+  /* Tightened scrollbars for a tool feel */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; border: 2px solid var(--panel); }
+  *::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  window.APP_PREFS = { theme: 'light' };
+  document.documentElement.setAttribute('data-theme', 'light');
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/primitives.jsx"></script>
+<script type="text/babel" src="src/sidebar.jsx"></script>
+<script type="text/babel" src="src/dashboard.jsx"></script>
+<script type="text/babel" src="src/mapping.jsx"></script>
+<script type="text/babel" src="src/execution.jsx"></script>
+<script type="text/babel" src="src/logs.jsx"></script>
+<script type="text/babel" src="src/artifacts.jsx"></script>
+<script type="text/babel" src="src/exporttab.jsx"></script>
+<script type="text/babel" src="src/site.jsx"></script>
+<script type="text/babel" src="src/sitesettings.jsx"></script>
+<script type="text/babel" src="src/solutionsettings.jsx"></script>
+<script type="text/babel" src="src/projectsettings.jsx"></script>
+<script type="text/babel" src="src/newproject.jsx"></script>
+<script type="text/babel" src="src/empty.jsx"></script>
+<script type="text/babel" src="src/overlays.jsx"></script>
+<script type="text/babel" src="src/app.jsx"></script>
+
+</body>
+</html>
