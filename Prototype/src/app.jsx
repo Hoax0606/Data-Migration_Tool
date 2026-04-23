@@ -22,6 +22,21 @@ const App = () => {
   const [showNew, setShowNew] = React.useState(false);
   const [showNewSite, setShowNewSite] = React.useState(false);
   const [overlay, setOverlay] = React.useState(null); // 'profile' | 'help' | 'about' | 'signout' | 'signedout' | null
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  /* VSCode-style sidebar toggle — Ctrl/Cmd+B */
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        e.preventDefault();
+        setSidebarOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const project = projects.find(p => p.id === activeProject) || projects[0];
   const site = sites.find(s => s.id === activeSite) || sites[0];
@@ -41,6 +56,13 @@ const App = () => {
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+      <div style={{
+        width: sidebarOpen ? 218 : 0,
+        minWidth: sidebarOpen ? 218 : 0,
+        overflow: 'hidden',
+        transition: 'width .18s ease, min-width .18s ease',
+        display: 'flex', flexShrink: 0,
+      }}>
       <Sidebar projects={projects} activeId={view === 'site' ? null : activeProject}
         siteActive={view === 'site'}
         sites={sites} activeSite={activeSite}
@@ -76,6 +98,7 @@ const App = () => {
             }
           }
         }}/>
+      </div>
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Top bar */}
@@ -86,6 +109,19 @@ const App = () => {
           background: 'var(--panel)',
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            title={sidebarOpen ? 'Hide sidebar (Ctrl+B)' : 'Show sidebar (Ctrl+B)'}
+            style={{
+              width: 26, height: 26,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              border: '1px solid transparent', borderRadius: 4,
+              background: 'transparent', color: sidebarOpen ? 'var(--text-2)' : 'var(--navy)',
+              cursor: 'pointer', flexShrink: 0, marginLeft: -4,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--panel-2)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          ><Ic.panel/></button>
           {view === 'sitesettings' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
               <div style={{ width: 18, height: 18, borderRadius: 3, background: 'var(--navy)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>⚙</div>
@@ -145,22 +181,38 @@ const App = () => {
           <div style={{ flex: 1 }}/>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '2px 8px', background: 'var(--panel-2)',
-              border: '1px solid var(--border)', borderRadius: 10,
-            }} title="AS-IS source database connection">
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)' }}/>
-              AS-IS
-            </span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '2px 8px', background: 'var(--panel-2)',
-              border: '1px solid var(--border)', borderRadius: 10,
-            }} title="TO-BE target database connection">
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)' }}/>
-              TO-BE
-            </span>
+            {['asis', 'tobe'].map(side => {
+              const c = project.connections?.[side];
+              const dotColor = !c || c.status === 'untested' ? 'var(--text-4)'
+                : c.status === 'ok' ? 'var(--green)'
+                : c.status === 'failed' ? 'var(--red)'
+                : c.status === 'testing' ? 'var(--amber)'
+                : c.status === 'stale' ? 'var(--amber)'
+                : 'var(--text-4)';
+              const tooltip = !c ? '' :
+                c.status === 'ok' ? `Connected · latency ${c.latencyMs}ms · last tested ${c.lastTestedAt}` :
+                c.status === 'failed' ? `Failed · ${c.error} · ${c.lastTestedAt}` :
+                c.status === 'testing' ? 'Testing connection…' :
+                c.status === 'stale' ? `Stale · last tested ${c.lastTestedAt}` :
+                'Not tested yet';
+              return (
+                <button key={side} onClick={() => { if (view === 'project' && !project.isNew) setTab('settings'); }}
+                  title={tooltip}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '2px 8px', background: 'var(--panel-2)',
+                    border: '1px solid var(--border)', borderRadius: 10,
+                    fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit',
+                    cursor: view === 'project' && !project.isNew ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={e => { if (view === 'project' && !project.isNew) e.currentTarget.style.background = 'var(--panel)'; }}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--panel-2)'}
+                >
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
+                  {side === 'asis' ? 'AS-IS' : 'TO-BE'}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -274,7 +326,43 @@ const App = () => {
                       if (remaining[0]) setActiveProject(remaining[0].id);
                       setTab('dashboard');
                     }}
-                    onDdlChange={(side, meta) => setProjects(list => list.map(x => x.id === project.id ? { ...x, ddl: { ...(x.ddl || { asis: null, tobe: null }), [side]: meta } } : x))}/>}
+                    onDdlChange={(side, meta) => setProjects(list => list.map(x => x.id === project.id ? { ...x, ddl: { ...(x.ddl || { asis: null, tobe: null }), [side]: meta } } : x))}
+                    onTestConnection={(side) => {
+                      /* 1) mark side as 'testing' */
+                      setProjects(list => list.map(x => x.id === project.id ? {
+                        ...x, connections: { ...x.connections, [side]: { ...x.connections[side], status: 'testing' } }
+                      } : x));
+                      /* 2) simulate network delay, then set final status — host-based mock: fail if host empty or contains 'bad'/'invalid' */
+                      setTimeout(() => {
+                        setProjects(list => list.map(x => {
+                          if (x.id !== project.id) return x;
+                          const host = side === 'asis' ? (x.config?.srcHost || 'mvs-prod.kdb.internal') : (x.config?.tgtHost || 'pg-core-01.kdb.internal');
+                          const fail = !host.trim() || /bad|invalid|fail/i.test(host);
+                          const prev = x.connections[side] || {};
+                          const next = fail ? {
+                            ...prev, status: 'failed', lastTestedAt: 'just now',
+                            latencyMs: null,
+                            error: !host.trim() ? 'Host is empty (mock)' : 'Connection refused — host unreachable (mock)',
+                          } : {
+                            ...prev, status: 'ok', lastTestedAt: 'just now',
+                            latencyMs: 15 + Math.floor(Math.random() * 70),
+                            detectedTables: prev.detectedTables || Math.floor(20 + Math.random() * 120),
+                            error: null,
+                          };
+                          return { ...x, connections: { ...x.connections, [side]: next } };
+                        }));
+                      }, 1400);
+                    }}
+                    onCredentialsChange={(side, creds) => setProjects(list => list.map(x => x.id === project.id ? {
+                      ...x, connections: { ...x.connections, [side]: { ...x.connections[side], credentials: creds } }
+                    } : x))}
+                    onSimulateFail={(side) => setProjects(list => list.map(x => x.id === project.id ? {
+                      ...x, connections: { ...x.connections, [side]: {
+                        ...x.connections?.[side], status: 'failed',
+                        lastTestedAt: 'just now', latencyMs: null,
+                        error: 'Connection refused — host unreachable (mock)',
+                      } }
+                    } : x))}/>}
               </>
           }
         </div>
@@ -283,7 +371,7 @@ const App = () => {
         <div style={{
           height: 20, display: 'flex', alignItems: 'center',
           padding: '0 12px', borderTop: '1px solid var(--border)',
-          background: '#0e7268', color: '#cfd9e6',
+          background: 'var(--navy)', color: '#cfd9e6',
           fontSize: 10.5, fontFamily: 'var(--mono)', gap: 12,
         }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>

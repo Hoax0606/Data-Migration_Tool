@@ -152,9 +152,9 @@ const DualInventory = ({ project, hasAsis, hasTobe, asis, tobe, selected, onSele
 
 const InventoryTree = ({ label, side, available, ddl, tables, allTables, selected, onSelect }) => {
   const [open, setOpen] = React.useState(true);
-  const accent = side === 'asis' ? '#b87219' : 'var(--navy)';
-  const accentBg = side === 'asis' ? '#fdf0de' : 'var(--navy-50)';
-  const accentBd = side === 'asis' ? '#e4c793' : '#c5d3e4';
+  const accent = side === 'asis' ? 'var(--amber)' : 'var(--navy)';
+  const accentBg = side === 'asis' ? 'var(--amber-50)' : 'var(--navy-50)';
+  const accentBd = side === 'asis' ? 'var(--amber)' : 'var(--navy)';
 
   /* Coverage stats — derived from allTables (not the filtered view). */
   const stats = React.useMemo(() => {
@@ -199,13 +199,13 @@ const InventoryTree = ({ label, side, available, ddl, tables, allTables, selecte
           <span title="routed tables" style={{
             padding: '0 5px', borderRadius: 2,
             background: 'var(--green-50)', color: 'var(--green)',
-            border: '1px solid #b7dcc0',
+            border: '1px solid var(--green)',
           }}>{stats.routed} routed</span>
           {stats.unrouted > 0 && (
             <span title="tables not bound to anything" style={{
               padding: '0 5px', borderRadius: 2,
               background: 'var(--amber-50)', color: 'var(--amber)',
-              border: '1px solid #ebcf8e',
+              border: '1px solid var(--amber)',
             }}>{stats.unrouted} unrouted</span>
           )}
           {stats.multi > 0 && (
@@ -213,7 +213,7 @@ const InventoryTree = ({ label, side, available, ddl, tables, allTables, selecte
               style={{
                 padding: '0 5px', borderRadius: 2,
                 background: 'var(--navy-50)', color: 'var(--navy)',
-                border: '1px solid #c5d3e4',
+                border: '1px solid var(--navy)',
               }}>{stats.multi} {side === 'asis' ? 'multi-target' : 'multi-source'}</span>
           )}
         </div>
@@ -248,8 +248,8 @@ const InventoryTree = ({ label, side, available, ddl, tables, allTables, selecte
           <div style={{
             margin: '2px 10px 6px',
             padding: '10px 10px', borderRadius: 3,
-            border: '1px dashed #e4c793', background: '#fffaf0',
-            fontSize: 11, color: '#7a4d05', lineHeight: 1.5,
+            border: '1px dashed var(--amber)', background: 'var(--amber-50)',
+            fontSize: 11, color: 'var(--amber)', lineHeight: 1.5,
           }}>
             <div style={{ fontWeight: 600, marginBottom: 3 }}>DDL not imported</div>
             <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
@@ -264,8 +264,8 @@ const InventoryTree = ({ label, side, available, ddl, tables, allTables, selecte
 
 const InventoryItem = ({ side, table, isSelected, onClick }) => {
   const unrouted = table.unrouted;
-  const accent = side === 'asis' ? '#b87219' : 'var(--navy)';
-  const selBg = side === 'asis' ? '#fdf0de' : 'var(--navy-50)';
+  const accent = side === 'asis' ? 'var(--amber)' : 'var(--navy)';
+  const selBg = side === 'asis' ? 'var(--amber-50)' : 'var(--navy-50)';
 
   let badgeText = '';
   let badgeTone = null;
@@ -304,7 +304,7 @@ const InventoryItem = ({ side, table, isSelected, onClick }) => {
           padding: '0 4px', borderRadius: 2,
           color: badgeTone === 'warn' ? 'var(--amber)' : badgeTone === 'info' ? 'var(--navy)' : badgeTone === 'ok' ? 'var(--green)' : 'var(--text-4)',
           background: badgeTone === 'warn' ? 'var(--amber-50)' : badgeTone === 'info' ? 'var(--navy-50)' : badgeTone === 'ok' ? 'var(--green-50)' : 'var(--panel-2)',
-          border: `1px solid ${badgeTone === 'warn' ? '#ebcf8e' : badgeTone === 'info' ? '#c5d3e4' : badgeTone === 'ok' ? '#b7dcc0' : 'var(--border)'}`,
+          border: `1px solid ${badgeTone === 'warn' ? 'var(--amber)' : badgeTone === 'info' ? 'var(--navy)' : badgeTone === 'ok' ? 'var(--green)' : 'var(--border)'}`,
           whiteSpace: 'nowrap', flexShrink: 0,
         }}>{badgeText}</span>
       </div>
@@ -406,7 +406,7 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
           <span style={{
             fontSize: 9.5, fontFamily: 'var(--mono)', fontWeight: 700,
             color: 'var(--navy)', background: 'var(--navy-50)',
-            border: '1px solid #c5d3e4', borderRadius: 2, padding: '1px 5px',
+            border: '1px solid var(--navy)', borderRadius: 2, padding: '1px 5px',
           }}>TO-BE</span>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
@@ -690,7 +690,12 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
       const base = withPrimary(srcs);
       const aliases = base.map(s => s.alias);
       const newAlias = genAlias(tbl.name, aliases);
-      const newSrc = base[0]?.role === 'union'
+      /* First-ever source for a stub TO-BE (sd.asis was null so withPrimary
+         couldn't fabricate) — it becomes the primary. */
+      if (base.length === 0) {
+        return [{ alias: newAlias, table: tbl.name, role: 'primary', rows: tbl.rows }];
+      }
+      const newSrc = base[0].role === 'union'
         ? { alias: newAlias, table: tbl.name, role: 'union', rows: tbl.rows }
         : { alias: newAlias, table: tbl.name, role: 'join', joinType: 'LEFT JOIN',
             joinOn: `${base[0].alias}.? = ${newAlias}.?`, rows: tbl.rows };
@@ -754,7 +759,13 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
           Table binding
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--mono)', fontSize: 11.5, minWidth: 0, flex: 1 }}>
-          {composition?.kind === 'single' ? (
+          {sources.length === 0 ? (
+            <>
+              <span style={{ color: 'var(--text-3)', fontStyle: 'italic' }}>(no source yet)</span>
+              <span style={{ color: 'var(--text-4)' }}><Ic.arrow/></span>
+              <span style={{ color: 'var(--navy)', fontWeight: 500 }}>{tgtTable}</span>
+            </>
+          ) : composition?.kind === 'single' ? (
             <>
               <span style={{ color: 'var(--text)' }}>{composition.label}</span>
               <span style={{ color: 'var(--text-4)' }}><Ic.arrow/></span>
@@ -767,8 +778,8 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
                   {i > 0 && <span style={{ color: 'var(--text-3)', fontWeight: 700 }}>{op}</span>}
                   <span style={{
                     fontSize: 9.5, fontWeight: 700, color: 'var(--navy)',
-                    background: '#fff', padding: '0 4px', borderRadius: 2,
-                    border: '1px solid #c5d3e4',
+                    background: 'var(--panel)', padding: '0 4px', borderRadius: 2,
+                    border: '1px solid var(--navy)',
                   }}>{s.alias}</span>
                   <span style={{ color: 'var(--text)' }}>{s.table.split('.').pop()}</span>
                 </React.Fragment>
@@ -778,7 +789,9 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
             </>
           )}
         </div>
-        {composition && composition.kind !== 'single' && (
+        {sources.length === 0 ? (
+          <StatusBadge tone="warn">no source</StatusBadge>
+        ) : composition && composition.kind !== 'single' && (
           <StatusBadge tone="info">
             {kind === 'union' ? `UNION · ${sources.length}` : `JOIN · ${sources.length}`}
           </StatusBadge>
@@ -848,7 +861,7 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
                       {t.unrouted && <span style={{
                         fontSize: 9, padding: '0 4px', borderRadius: 2,
                         background: 'var(--amber-50)', color: 'var(--amber)',
-                        border: '1px solid #ebcf8e', fontWeight: 600,
+                        border: '1px solid var(--amber)', fontWeight: 600,
                       }}>unrouted</span>}
                     </button>
                   ))}
@@ -860,8 +873,8 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
           {!hasAsis && (
             <div style={{
               padding: 10, borderRadius: 3,
-              border: '1px dashed #e4c793', background: '#fffaf0',
-              fontSize: 11, color: '#7a4d05',
+              border: '1px dashed var(--amber)', background: 'var(--amber-50)',
+              fontSize: 11, color: 'var(--amber)',
             }}>
               AS-IS DDL을 먼저 import 해야 소스 테이블을 연결할 수 있습니다.
             </div>
@@ -892,8 +905,8 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{
                         fontSize: 10, fontWeight: 700, color: 'var(--navy)',
-                        background: '#fff', padding: '1px 5px', borderRadius: 2,
-                        border: '1px solid #c5d3e4', fontFamily: 'var(--mono)',
+                        background: 'var(--panel)', padding: '1px 5px', borderRadius: 2,
+                        border: '1px solid var(--navy)', fontFamily: 'var(--mono)',
                       }}>{s.alias}</span>
                       <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text)' }}>{s.table}</span>
                       {s.rows != null && <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-4)' }}>
@@ -955,7 +968,7 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
                               flex: 1, height: 20, padding: '0 6px',
                               border: '1px solid var(--navy)', borderRadius: 2,
                               fontFamily: 'var(--mono)', fontSize: 11,
-                              background: '#fff', color: 'var(--text)',
+                              background: 'var(--panel)', color: 'var(--text)',
                             }}/>
                         ) : (
                           <span
@@ -1016,7 +1029,7 @@ const SourceAliasTag = ({ alias, composition }) => {
     <span style={{
       fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 700,
       color: 'var(--navy)', background: 'var(--navy-50)',
-      border: '1px solid #c5d3e4', borderRadius: 2,
+      border: '1px solid var(--navy)', borderRadius: 2,
       padding: '1px 5px',
     }}>{alias}</span>
   );
@@ -1057,15 +1070,17 @@ const Inspector = ({ active, composition, onClose }) => {
         <Row k="Primary key">{active.pk ? <StatusBadge tone="info">yes</StatusBadge> : <span style={{ color: 'var(--text-4)' }}>—</span>}</Row>
       </div>
 
+      <ProfileMiniCard active={active} composition={composition}/>
+
       <TransformPanel active={active}/>
 
       {active.note && (
         <div style={{
           margin: '10px 14px 0', padding: 10,
           background: active.status === 'err' ? 'var(--red-50)' : active.status === 'warn' ? 'var(--amber-50)' : 'var(--gray-50)',
-          border: `1px solid ${active.status === 'err' ? '#e5b2b2' : active.status === 'warn' ? '#ebcf8e' : 'var(--border)'}`,
+          border: `1px solid ${active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--border)'}`,
           borderRadius: 4, fontSize: 11.5,
-          color: active.status === 'err' ? '#8a2424' : active.status === 'warn' ? '#7a4d05' : 'var(--text-2)',
+          color: active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--text-2)',
           fontFamily: 'var(--mono)', lineHeight: 1.5,
         }}>
           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, opacity: 0.7, marginBottom: 4 }}>Note</div>
@@ -1083,6 +1098,127 @@ const Inspector = ({ active, composition, onClose }) => {
     </aside>
   );
 };
+
+/* Compact profile summary for the selected AS-IS column, shown inline in
+   the mapping Inspector. Skipped for rows without a valid AS-IS source
+   (added / skip / missing). Mock data — real tool queries ANALYZE /
+   information_schema on the active source connection. */
+const ProfileMiniCard = ({ active, composition }) => {
+  const data = React.useMemo(() => {
+    if (!active || active.rule === 'added' || active.rule === 'skip') return null;
+    const sources = composition?.sources || [];
+    if (sources.length === 0) return null;
+    let srcTable;
+    if (active.sourceAlias) {
+      const parts = String(active.sourceAlias).split('+');
+      srcTable = sources.find(s => parts.includes(s.alias))?.table;
+    }
+    if (!srcTable) srcTable = sources[0]?.table;
+    if (!srcTable) return null;
+    const cols = (window.ASIS_COLUMN_SCHEMA || {})[srcTable] || [];
+    const col = cols.find(c => c.name === active.src);
+    if (!col) return null;
+    const inv = (window.getAsisInventory || (() => []))();
+    const rows = inv.find(t => t.name === srcTable)?.rows || 100000;
+    return { srcTable, col, profile: window.mockColumnProfile(col, srcTable, rows) };
+  }, [active, composition]);
+
+  if (!data) return null;
+  const { srcTable, col, profile } = data;
+  const nullWarn = profile.nullPct > 10;
+  const nullBar = Math.max(2, Math.min(100, profile.nullPct));
+  const fmtN = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+    : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K'
+    : n.toLocaleString();
+
+  return (
+    <div style={{ padding: '10px 14px 6px', borderTop: '1px solid var(--border)' }}>
+      <div style={{
+        fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase',
+        letterSpacing: 0.8, marginBottom: 6,
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span>Source profile</span>
+        <span style={{
+          color: 'var(--text-4)', fontFamily: 'var(--mono)', fontSize: 10,
+          textTransform: 'none', letterSpacing: 0,
+        }}>{srcTable.split('.').pop()}</span>
+        <span style={{
+          padding: '0 5px', fontSize: 9, fontFamily: 'var(--mono)', fontWeight: 600,
+          background: 'var(--amber-50)', color: 'var(--amber)',
+          border: '1px solid var(--amber)', borderRadius: 2,
+          textTransform: 'none', letterSpacing: 0,
+        }}>mock</span>
+      </div>
+      <div style={{
+        padding: '8px 10px', background: 'var(--panel-2)', borderRadius: 3,
+        fontFamily: 'var(--mono)', fontSize: 11,
+        display: 'flex', flexDirection: 'column', gap: 4,
+      }}>
+        <MiniRow k="null" v={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{
+              width: 64, height: 5, background: 'var(--border)',
+              borderRadius: 3, overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${nullBar}%`, height: '100%',
+                background: nullWarn ? 'var(--amber)' : 'var(--text-4)',
+              }}/>
+            </div>
+            <span style={{ color: nullWarn ? 'var(--amber)' : 'var(--text-2)' }}>
+              {profile.nullPct.toFixed(1)}%
+            </span>
+            {nullWarn && (
+              <span title="고 null 비율 — TO-BE 기본값 또는 COALESCE 고려"
+                style={{
+                  fontSize: 9, padding: '0 4px', borderRadius: 2,
+                  background: 'var(--amber-50)', color: 'var(--amber)',
+                  border: '1px solid var(--amber)', fontWeight: 600,
+                }}>heavy</span>
+            )}
+          </div>
+        }/>
+        <MiniRow k="distinct" v={
+          <span style={{ color: 'var(--text-2)' }}>
+            {fmtN(profile.distinct)}
+            {col.pk && <span style={{ color: 'var(--navy)', fontSize: 9, marginLeft: 4 }}>unique</span>}
+          </span>
+        }/>
+        <MiniRow k={profile.topValues ? 'top' : 'range'} v={
+          profile.topValues ? (
+            <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              {profile.topValues.slice(0, 5).map((tv, ti) => (
+                <span key={ti} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  padding: '0 5px', borderRadius: 2,
+                  background: ti === 0 ? 'var(--navy-50)' : 'var(--panel)',
+                  border: `1px solid ${ti === 0 ? 'var(--navy)' : 'var(--border)'}`,
+                  color: ti === 0 ? 'var(--navy)' : 'var(--text-2)',
+                  fontSize: 10, whiteSpace: 'nowrap',
+                }}>
+                  <b>{tv.value}</b>
+                  <span style={{ color: 'var(--text-4)' }}>{tv.pct}%</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span style={{ color: 'var(--text-2)' }}>
+              {profile.rangeKind === 'string' ? `len ${profile.min}..${profile.max}` : `${profile.min} .. ${profile.max}`}
+            </span>
+          )
+        }/>
+      </div>
+    </div>
+  );
+};
+
+const MiniRow = ({ k, v }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 18 }}>
+    <span style={{ width: 54, color: 'var(--text-3)', fontSize: 10.5 }}>{k}</span>
+    <span style={{ flex: 1, minWidth: 0 }}>{v}</span>
+  </div>
+);
 
 const TransformPanel = ({ active }) => {
   const lines = buildTransformLines(active);
@@ -1169,7 +1305,7 @@ const SamplePreview = ({ active }) => {
         <span style={{
           padding: '0 5px', fontSize: 9, fontFamily: 'var(--mono)', fontWeight: 600,
           background: 'var(--amber-50)', color: 'var(--amber)',
-          border: '1px solid #ebcf8e', borderRadius: 2, textTransform: 'none', letterSpacing: 0,
+          border: '1px solid var(--amber)', borderRadius: 2, textTransform: 'none', letterSpacing: 0,
         }}>mock</span>
       </div>
 
@@ -1217,6 +1353,8 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
      independent of bindings. Routing and Maps-to info DO depend on current
      sd.sources and must re-compute when bindingsVersion bumps. */
   const columns = (window.ASIS_COLUMN_SCHEMA || {})[tableName] || [];
+  const [subTab, setSubTab] = React.useState('columns');
+  React.useEffect(() => { setSubTab('columns'); }, [tableName]);
 
   const info = React.useMemo(() => {
     const diffs = window.SCHEMA_DIFF || [];
@@ -1297,8 +1435,8 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
       }}>
         <span style={{
           fontSize: 9.5, fontFamily: 'var(--mono)', fontWeight: 700,
-          color: '#b87219', background: '#fdf0de',
-          border: '1px solid #e4c793', borderRadius: 2, padding: '1px 5px',
+          color: 'var(--amber)', background: 'var(--amber-50)',
+          border: '1px solid var(--amber)', borderRadius: 2, padding: '1px 5px',
         }}>AS-IS</span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600 }}>{tableName}</span>
         <div style={{ flex: 1 }}/>
@@ -1355,7 +1493,7 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
                     {alreadyBound && <span style={{
                       fontSize: 9, padding: '0 4px', borderRadius: 2,
                       background: 'var(--green-50)', color: 'var(--green)',
-                      border: '1px solid #b7dcc0', fontWeight: 600,
+                      border: '1px solid var(--green)', fontWeight: 600,
                     }}>bound</span>}
                   </button>
                 );
@@ -1368,9 +1506,9 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
       {/* Hint bar */}
       <div style={{
         padding: '6px 14px',
-        background: '#fffaf0', borderBottom: '1px solid #f0e4cc',
+        background: 'var(--amber-50)', borderBottom: '1px solid var(--amber)',
         display: 'flex', alignItems: 'center', gap: 8,
-        fontSize: 11, color: '#7a4d05',
+        fontSize: 11, color: 'var(--amber)',
       }}>
         <Ic.warn/>
         <span>
@@ -1386,8 +1524,8 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
         {info.routing.length === 0 ? (
           <div style={{
             padding: 10, borderRadius: 3,
-            border: '1px dashed #e4c793', background: '#fffaf0',
-            fontSize: 11, color: '#7a4d05',
+            border: '1px dashed var(--amber)', background: 'var(--amber-50)',
+            fontSize: 11, color: 'var(--amber)',
           }}>
             이 AS-IS 테이블은 아직 어느 TO-BE 테이블에도 연결되어 있지 않습니다.
             [Route to TO-BE…] 로 이행 대상을 지정하세요.
@@ -1414,9 +1552,66 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
         )}
       </div>
 
-      {/* Column list */}
+      {/* Sub-tabs: Columns / Samples / Profile */}
+      <div style={{
+        display: 'flex', alignItems: 'stretch',
+        padding: '0 14px',
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--panel)', height: 30,
+      }}>
+        {[
+          { k: 'columns', l: 'Columns', c: columns.length },
+          { k: 'samples', l: 'Samples', c: '10' },
+          { k: 'profile', l: 'Profile', c: columns.length },
+        ].map(t => {
+          const active = subTab === t.k;
+          return (
+            <button key={t.k} onClick={() => setSubTab(t.k)} style={{
+              position: 'relative',
+              padding: '0 13px', border: 'none', background: 'transparent',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              cursor: 'pointer',
+              color: active ? 'var(--navy)' : 'var(--text-2)',
+              fontWeight: active ? 600 : 500, fontSize: 12,
+            }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = 'var(--text)'; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = 'var(--text-2)'; }}
+            >
+              {t.l}
+              <span style={{
+                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-4)',
+                padding: '0 5px', background: active ? 'var(--navy-50)' : 'var(--panel-2)',
+                border: '1px solid var(--border)', borderRadius: 6,
+              }}>{t.c}</span>
+              {active && (
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, bottom: -1,
+                  height: 2, background: 'var(--navy)',
+                }}/>
+              )}
+            </button>
+          );
+        })}
+        <div style={{ flex: 1 }}/>
+        <div style={{ display: 'inline-flex', alignItems: 'center', fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', gap: 4 }}>
+          {subTab === 'samples' && <>SELECT * LIMIT 10 <span style={{
+            padding: '0 5px', fontSize: 9, fontWeight: 600,
+            background: 'var(--amber-50)', color: 'var(--amber)',
+            border: '1px solid var(--amber)', borderRadius: 2,
+          }}>mock</span></>}
+          {subTab === 'profile' && <>ANALYZE / information_schema <span style={{
+            padding: '0 5px', fontSize: 9, fontWeight: 600,
+            background: 'var(--amber-50)', color: 'var(--amber)',
+            border: '1px solid var(--amber)', borderRadius: 2,
+          }}>mock</span></>}
+        </div>
+      </div>
+
+      {/* Sub-tab content */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--panel)' }}>
-        {columns.length === 0 ? (
+        {subTab === 'samples' && <AsisSamplesView tableName={tableName} columns={columns}/>}
+        {subTab === 'profile' && <AsisProfileView tableName={tableName} columns={columns}/>}
+        {subTab === 'columns' && (columns.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
             컬럼 정보가 없습니다. DDL 파싱 결과를 확인하세요.
           </div>
@@ -1469,8 +1664,8 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
                                 padding: '1px 6px', borderRadius: 2,
                                 background: d.kind === 'merge' ? 'var(--amber-50)' : 'var(--navy-50)',
-                                border: `1px solid ${d.kind === 'merge' ? '#ebcf8e' : '#c5d3e4'}`,
-                                color: d.kind === 'merge' ? '#8a5a06' : 'var(--navy)',
+                                border: `1px solid ${d.kind === 'merge' ? 'var(--amber)' : 'var(--navy)'}`,
+                                color: d.kind === 'merge' ? 'var(--amber)' : 'var(--navy)',
                                 fontSize: 10.5, cursor: 'pointer',
                               }}
                               title={`Jump to ${d.tobeTable}.${d.tobeCol}`}>
@@ -1486,7 +1681,204 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
               })}
             </tbody>
           </table>
-        )}
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─── AS-IS sub-views: Samples / Profile ─────────────────────────── */
+
+const AsisSamplesView = ({ tableName, columns }) => {
+  const rows = React.useMemo(
+    () => window.mockTableSamples ? window.mockTableSamples(tableName) : [],
+    [tableName]
+  );
+  if (columns.length === 0 || rows.length === 0) {
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+      샘플을 가져올 수 없습니다. 실접속 후 SELECT * LIMIT 10 으로 대체됩니다.
+    </div>;
+  }
+  return (
+    <div style={{ overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, fontFamily: 'var(--mono)' }}>
+        <thead>
+          <tr>
+            <th style={{
+              width: 28, padding: '5px 8px', textAlign: 'right',
+              fontSize: 10, color: 'var(--text-4)',
+              background: 'var(--panel-2)', borderBottom: '1px solid var(--border)',
+              position: 'sticky', top: 0,
+            }}>#</th>
+            {columns.map(c => (
+              <th key={c.name} style={{
+                padding: '5px 10px', textAlign: 'left',
+                fontWeight: 500, fontSize: 10.5,
+                color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5,
+                background: 'var(--panel-2)', borderBottom: '1px solid var(--border)',
+                position: 'sticky', top: 0, whiteSpace: 'nowrap',
+              }}>
+                {c.pk && <span style={{ color: 'var(--navy)', marginRight: 4, fontSize: 9 }}>PK</span>}
+                {c.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} style={{
+              background: i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              <td style={{ padding: '3px 8px', textAlign: 'right', color: 'var(--text-4)', fontSize: 10.5 }}>{i + 1}</td>
+              {columns.map(c => {
+                const v = row[c.name];
+                const isNull = v === '00000000000000' || v === '' || v == null;
+                return (
+                  <td key={c.name} style={{
+                    padding: '3px 10px',
+                    color: isNull ? 'var(--text-4)' : 'var(--text)',
+                    fontStyle: isNull ? 'italic' : 'normal',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    maxWidth: 220,
+                  }}>{isNull ? '(null)' : String(v)}</td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--text-4)', fontFamily: 'var(--mono)',
+        display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Ic.warn/>
+        고정 샘플입니다. 실접속 시 {tableName}에서 첫 10건을 읽어와 교체됩니다.
+      </div>
+    </div>
+  );
+};
+
+const AsisProfileView = ({ tableName, columns }) => {
+  const tableMeta = React.useMemo(
+    () => ((window.getAsisInventory || (() => []))()).find(t => t.name === tableName),
+    [tableName]
+  );
+  const totalRows = tableMeta?.rows || 100000;
+
+  const profiles = React.useMemo(
+    () => columns.map(c => ({ col: c, profile: window.mockColumnProfile(c, tableName, totalRows) })),
+    [tableName, columns, totalRows]
+  );
+
+  if (columns.length === 0) {
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+      프로파일 대상 컬럼이 없습니다.
+    </div>;
+  }
+
+  const fmtN = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : n.toLocaleString();
+
+  return (
+    <div>
+      {/* Table-level summary */}
+      <div style={{
+        padding: '10px 14px', borderBottom: '1px solid var(--border)',
+        background: 'var(--panel-2)',
+        display: 'flex', alignItems: 'center', gap: 14,
+        fontSize: 11.5, fontFamily: 'var(--mono)', color: 'var(--text-2)',
+      }}>
+        <span style={{ color: 'var(--text-3)' }}>rows</span>
+        <span>{totalRows.toLocaleString()}</span>
+        <span style={{ color: 'var(--text-4)' }}>·</span>
+        <span style={{ color: 'var(--text-3)' }}>columns</span>
+        <span>{columns.length}</span>
+        <span style={{ color: 'var(--text-4)' }}>·</span>
+        <span style={{ color: 'var(--text-3)' }}>est. size</span>
+        <span>{(totalRows * columns.length * 24 / 1e9).toFixed(1)} GB</span>
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr>
+            {['Column', 'Type', 'Null %', 'Distinct', 'Range / Top', ''].map((h, i) => (
+              <th key={i} style={{
+                padding: '6px 10px', textAlign: i >= 2 && i <= 3 ? 'right' : 'left',
+                fontWeight: 500, fontSize: 11,
+                color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.6,
+                background: 'var(--panel-2)', borderBottom: '1px solid var(--border)',
+                position: 'sticky', top: 0,
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {profiles.map(({ col, profile }, i) => {
+            const nullWarn = profile.nullPct > 10;
+            const nullBar = Math.max(2, Math.min(100, profile.nullPct));
+            return (
+              <tr key={col.name} style={{
+                background: i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)',
+                borderBottom: '1px solid var(--border)',
+              }}>
+                <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontWeight: 500 }}>
+                  {col.pk && <span style={{ color: 'var(--navy)', marginRight: 5, fontSize: 9 }}>PK</span>}
+                  {col.name}
+                </td>
+                <td style={{ padding: '6px 10px' }}><TypeBadge>{col.type}</TypeBadge></td>
+                <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                      width: 60, height: 6, background: 'var(--border)',
+                      borderRadius: 3, overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        width: `${nullBar}%`, height: '100%',
+                        background: nullWarn ? 'var(--amber)' : 'var(--text-4)',
+                      }}/>
+                    </div>
+                    <span style={{ color: nullWarn ? 'var(--amber)' : 'var(--text-2)', minWidth: 40, textAlign: 'right' }}>
+                      {profile.nullPct.toFixed(1)}%
+                    </span>
+                  </div>
+                </td>
+                <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
+                  {fmtN(profile.distinct)}
+                  {col.pk && <span style={{ color: 'var(--navy)', fontSize: 10, marginLeft: 4 }}>(unique)</span>}
+                </td>
+                <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-2)' }}>
+                  {profile.topValues ? (
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      {profile.topValues.map((tv, ti) => (
+                        <span key={ti} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '0 5px', borderRadius: 2,
+                          background: ti === 0 ? 'var(--navy-50)' : 'var(--panel-2)',
+                          border: `1px solid ${ti === 0 ? 'var(--navy)' : 'var(--border)'}`,
+                          color: ti === 0 ? 'var(--navy)' : 'var(--text-2)',
+                          fontSize: 10.5,
+                        }}>
+                          <b>{tv.value}</b>
+                          <span style={{ color: 'var(--text-4)' }}>{tv.pct}%</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span>
+                      {profile.rangeKind === 'string' ? `len ${profile.min} .. ${profile.max}` : `${profile.min} .. ${profile.max}`}
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                  {nullWarn && <StatusBadge tone="warn">null heavy</StatusBadge>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--text-4)', fontFamily: 'var(--mono)',
+        display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Ic.warn/>
+        고정 프로파일 값입니다. 실접속 시 ANALYZE / information_schema / COUNT DISTINCT 로 채워집니다.
       </div>
     </div>
   );
@@ -1520,13 +1912,13 @@ const GlobalEmpty = ({ project, which }) => {
             padding: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--panel-2)',
           }}>
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 4 }}>AS-IS schema</div>
-            <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: '#8a5a06' }}>not imported</div>
+            <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--amber)' }}>not imported</div>
           </div>
           <div style={{
             padding: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--panel-2)',
           }}>
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 4 }}>TO-BE schema</div>
-            <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: '#8a5a06' }}>not imported</div>
+            <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--amber)' }}>not imported</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>

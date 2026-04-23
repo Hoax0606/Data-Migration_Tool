@@ -93,6 +93,12 @@ const NewProjectModal = ({ onClose, onCreate }) => {
         steward: f.steward,
       },
       ddl: { asis: f.srcDdl, tobe: f.tgtDdl },
+      connections: {
+        asis: { status: 'untested', lastTestedAt: null, latencyMs: null, detectedTables: null, error: null,
+          credentials: { username: f.steward || 'app_ops', authMethod: 'password', passwordSet: false, lastRotated: null } },
+        tobe: { status: 'untested', lastTestedAt: null, latencyMs: null, detectedTables: null, error: null,
+          credentials: { username: f.steward || 'app_ops', authMethod: 'password', passwordSet: false, lastRotated: null } },
+      },
     };
     onCreate(p);
   };
@@ -367,7 +373,7 @@ const Input = ({ value, onChange, placeholder, mono }) => (
       width: '100%',
       height: 26, padding: '0 8px',
       border: '1px solid var(--border-strong)', borderRadius: 3,
-      background: '#fff', color: 'var(--text)',
+      background: 'var(--panel)', color: 'var(--text)',
       fontFamily: mono ? 'var(--mono)' : 'var(--sans)', fontSize: mono ? 12 : 12.5,
       outline: 'none',
     }}
@@ -384,7 +390,7 @@ const Select = ({ value, onChange, options }) => (
   <select value={value} onChange={e => onChange(e.target.value)} style={{
     width: '100%', height: 26, padding: '0 8px',
     border: '1px solid var(--border-strong)', borderRadius: 3,
-    background: '#fff', color: 'var(--text)',
+    background: 'var(--panel)', color: 'var(--text)',
     fontSize: 12, outline: 'none',
   }}>
     {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -397,7 +403,7 @@ const Pills = ({ value, onChange, options }) => (
       <button key={o.id} onClick={() => onChange(o.id)} style={{
         flex: 1, border: 'none',
         borderLeft: i ? '1px solid var(--border)' : 'none',
-        background: value === o.id ? 'var(--navy-50)' : '#fff',
+        background: value === o.id ? 'var(--navy-50)' : 'var(--panel)',
         color: value === o.id ? 'var(--navy)' : 'var(--text-2)',
         fontWeight: value === o.id ? 600 : 500,
         fontFamily: 'var(--mono)', fontSize: 11,
@@ -416,7 +422,7 @@ const RadioCards = ({ value, onChange, options }) => (
           textAlign: 'left',
           padding: '7px 10px',
           border: active ? '1px solid var(--navy)' : '1px solid var(--border)',
-          background: active ? 'var(--navy-50)' : '#fff',
+          background: active ? 'var(--navy-50)' : 'var(--panel)',
           borderRadius: 3,
           cursor: 'pointer',
           display: 'flex', flexDirection: 'column', gap: 2,
@@ -432,7 +438,7 @@ const RadioCards = ({ value, onChange, options }) => (
 );
 
 const EncList = ({ value, onChange, options }) => (
-  <div style={{ border: '1px solid var(--border)', borderRadius: 3, background: '#fff', maxHeight: 132, overflow: 'auto' }}>
+  <div style={{ border: '1px solid var(--border)', borderRadius: 3, background: 'var(--panel)', maxHeight: 132, overflow: 'auto' }}>
     {options.map((o, i) => {
       const active = value === o.id;
       return (
@@ -440,13 +446,13 @@ const EncList = ({ value, onChange, options }) => (
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '5px 9px',
           borderTop: i ? '1px solid var(--border)' : 'none',
-          background: active ? 'var(--navy-50)' : i % 2 ? 'var(--zebra)' : '#fff',
+          background: active ? 'var(--navy-50)' : i % 2 ? 'var(--zebra)' : 'var(--panel)',
           cursor: 'pointer',
         }}>
           <span style={{
             width: 12, height: 12, borderRadius: '50%',
             border: active ? '4px solid var(--navy)' : '1px solid var(--border-strong)',
-            background: '#fff',
+            background: 'var(--panel)',
           }}/>
           <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 500, color: active ? 'var(--navy)' : 'var(--text)', minWidth: 110 }}>{o.label}</span>
           {o.sub && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{o.sub}</span>}

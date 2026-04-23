@@ -97,10 +97,10 @@ const SiteSettings = ({ site, onSave, onDelete, onBack }) => {
                     placeholder="••••••••"
                     style={{
                       width: 240, height: 24, padding: '0 8px',
-                      border: `1px solid ${pwError ? '#c75757' : 'var(--border)'}`, borderRadius: 3,
+                      border: `1px solid ${pwError ? 'var(--red)' : 'var(--border)'}`, borderRadius: 3,
                       fontFamily: 'var(--mono)', fontSize: 11.5, background:  'var(--panel)',
                     }}/>
-                  {pwError && <div style={{ fontSize: 10.5, color: '#a12929', marginTop: 4 }}>{pwError}</div>}
+                  {pwError && <div style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 4 }}>{pwError}</div>}
                 </div>
               </SSRow>
             </>
@@ -110,18 +110,18 @@ const SiteSettings = ({ site, onSave, onDelete, onBack }) => {
         {/* Danger zone */}
         {site && (
           <div style={{ border: '1px solid #e6c6c6', borderRadius: 4, background:  'var(--panel)', marginTop: 20 }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid #f0dada', background: '#fcf4f4', fontSize: 12, fontWeight: 600, color: '#7a1f1f' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--red)', background: 'var(--red-50)', fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
               Danger zone
             </div>
             <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#7a1f1f' }}>Delete site</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>Delete site</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
                   Permanently removes this site and all its projects, artifacts, and logs. <b>This cannot be undone.</b>
                 </div>
               </div>
               <Btn kind="secondary" size="sm" onClick={() => setShowConfirm(true)}
-                style={{ borderColor: '#c75757', color: '#a12929' }}>Delete site…</Btn>
+                style={{ borderColor: 'var(--red)', color: 'var(--red)' }}>Delete site…</Btn>
             </div>
           </div>
         )}
@@ -131,8 +131,8 @@ const SiteSettings = ({ site, onSave, onDelete, onBack }) => {
             style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,50,.35)', display: 'grid', placeItems: 'center', zIndex: 2000 }}>
             <div onClick={e => e.stopPropagation()}
               style={{ width: 460, background:  'var(--panel)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 20px 60px rgba(20,30,50,.25)', overflow: 'hidden' }}>
-              <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid var(--border)', background: '#fcf4f4' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#7a1f1f' }}>Delete site “{site.name}”</div>
+              <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid var(--border)', background: 'var(--red-50)' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)' }}>Delete site “{site.name}”</div>
                 <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 3 }}>This will permanently delete all projects under this site.</div>
               </div>
               <div style={{ padding: '14px 18px' }}>
@@ -140,13 +140,13 @@ const SiteSettings = ({ site, onSave, onDelete, onBack }) => {
                   Type <code style={{ background: 'var(--panel-2)', padding: '1px 6px', borderRadius: 3, fontFamily: 'var(--mono)', fontSize: 11 }}>{site.name}</code> to confirm.
                 </div>
                 <input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder={site.name}
-                  style={{ width: '100%', height: 28, padding: '0 10px', border: `1px solid ${confirmText === site.name ? '#c75757' : 'var(--border)'}`, borderRadius: 3, fontFamily: 'var(--mono)', fontSize: 12 }}/>
+                  style={{ width: '100%', height: 28, padding: '0 10px', border: `1px solid ${confirmText === site.name ? 'var(--red)' : 'var(--border)'}`, borderRadius: 3, fontFamily: 'var(--mono)', fontSize: 12 }}/>
               </div>
               <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)', display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                 <Btn kind="secondary" size="sm" onClick={() => setShowConfirm(false)}>Cancel</Btn>
                 <button disabled={confirmText !== site.name}
                   onClick={() => { onDelete?.(); setShowConfirm(false); }}
-                  style={{ padding: '4px 14px', fontSize: 11.5, fontWeight: 500, border: 'none', borderRadius: 3, background: confirmText === site.name ? '#a12929' : '#d4b5b5', color: '#fff', cursor: confirmText === site.name ? 'pointer' : 'not-allowed' }}>
+                  style={{ padding: '4px 14px', fontSize: 11.5, fontWeight: 500, border: 'none', borderRadius: 3, background: confirmText === site.name ? 'var(--red)' : 'var(--border-strong)', color: '#fff', cursor: confirmText === site.name ? 'pointer' : 'not-allowed' }}>
                   Delete forever
                 </button>
               </div>
@@ -210,7 +210,7 @@ const SSToggle = ({ on, onChange, label }) => (
       onClick={() => onChange?.(!on)}
       style={{
         width: 28, height: 16, borderRadius: 8,
-        background: on ? 'var(--navy)' : '#c9ced6',
+        background: on ? 'var(--navy)' : 'var(--border-strong)',
         position: 'relative', transition: 'background .15s',
         flexShrink: 0,
       }}>

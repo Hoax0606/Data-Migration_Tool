@@ -27,16 +27,16 @@ const StatusDot = ({ tone, size = 8, ring = false }) => {
 
 const StatusBadge = ({ tone, children, mono = false }) => {
   const tones = {
-    ok:      { bg: 'var(--green-50)', fg: '#1e7a2f', bd: '#b7dcc0' },
-    running: { bg: 'var(--amber-50)', fg: '#8a5a06', bd: '#ebcf8e' },
-    warn:    { bg: 'var(--amber-50)', fg: '#8a5a06', bd: '#ebcf8e' },
-    err:     { bg: 'var(--red-50)',   fg: '#a12929', bd: '#e5b2b2' },
-    error:   { bg: 'var(--red-50)',   fg: '#a12929', bd: '#e5b2b2' },
-    blocked: { bg: 'var(--red-50)',   fg: '#a12929', bd: '#e5b2b2' },
+    ok:      { bg: 'var(--green-50)', fg: 'var(--green)', bd: 'var(--green)' },
+    running: { bg: 'var(--amber-50)', fg: 'var(--amber)', bd: 'var(--amber)' },
+    warn:    { bg: 'var(--amber-50)', fg: 'var(--amber)', bd: 'var(--amber)' },
+    err:     { bg: 'var(--red-50)',   fg: 'var(--red)', bd: 'var(--red)' },
+    error:   { bg: 'var(--red-50)',   fg: 'var(--red)', bd: 'var(--red)' },
+    blocked: { bg: 'var(--red-50)',   fg: 'var(--red)', bd: 'var(--red)' },
     queued:  { bg: 'var(--gray-50)',  fg: 'var(--text-2)', bd: 'var(--border)' },
     skip:    { bg: 'var(--gray-50)',  fg: 'var(--text-3)', bd: 'var(--border)' },
     idle:    { bg: 'var(--gray-50)',  fg: 'var(--text-3)', bd: 'var(--border)' },
-    info:    { bg: 'var(--navy-50)',  fg: 'var(--navy)',   bd: '#c5d3e4' },
+    info:    { bg: 'var(--navy-50)',  fg: 'var(--navy)',   bd: 'var(--navy)' },
   };
   const t = tones[tone] || tones.queued;
   return (
@@ -70,9 +70,9 @@ const TypeBadge = ({ children }) => (
 const RuleTag = ({ rule }) => {
   const cfg = {
     auto:  { label: 'passthrough', bg: 'var(--panel-2)', fg: 'var(--text-2)', bd: 'var(--border)' },
-    rule:  { label: 'transform',   bg: 'var(--navy-50)', fg: 'var(--navy)',   bd: '#c5d3e4' },
+    rule:  { label: 'transform',   bg: 'var(--navy-50)', fg: 'var(--navy)',   bd: 'var(--navy)' },
     skip:  { label: 'drop',        bg: 'var(--panel-2)', fg: 'var(--text-3)', bd: 'var(--border)' },
-    added: { label: 'added',       bg: 'var(--green-50)', fg: 'var(--green)', bd: '#b7dcc6' },
+    added: { label: 'added',       bg: 'var(--green-50)', fg: 'var(--green)', bd: 'var(--green)' },
   }[rule] || { label: rule, bg: '#eee', fg: '#555', bd: '#ddd' };
   return (
     <span style={{
@@ -105,7 +105,7 @@ const Btn = ({ kind = 'ghost', size = 'md', icon, children, onClick, active, sty
     primary: { background: 'var(--navy)', color: '#fff', borderColor: 'var(--navy)' },
     secondary: { background: 'var(--panel)', color: 'var(--text)', borderColor: 'var(--border-strong)' },
     ghost: { background: active ? 'var(--navy-50)' : 'transparent', color: active ? 'var(--navy)' : 'var(--text-2)', borderColor: 'transparent' },
-    danger: { background: 'var(--panel)', color: 'var(--red)', borderColor: '#e5b2b2' },
+    danger: { background: 'var(--panel)', color: 'var(--red)', borderColor: 'var(--red)' },
   };
   return (
     <button
@@ -194,6 +194,8 @@ const Ic = {
   check: () => <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 5l2 2 4-4"/></svg>,
   key:   () => <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="3" cy="6" r="2"/><path d="M5 6h4M7 6v2M9 6v1.5"/></svg>,
   dot:   () => <svg width="4" height="4" viewBox="0 0 4 4"><circle cx="2" cy="2" r="2" fill="currentColor"/></svg>,
+  panel: () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1.5" y="2.5" width="11" height="9" rx="1"/><line x1="5" y1="2.5" x2="5" y2="11.5"/></svg>,
+  spinner: () => <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ animation: 'mig-spin .9s linear infinite' }}><path d="M6 1a5 5 0 1 1 -4.5 2.8"/></svg>,
 };
 
 /* Formatting helpers */

@@ -120,7 +120,7 @@ const Execution = ({ stages }) => {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {/* Error callout */}
           <div style={{
-            border: '1px solid #e5b2b2',
+            border: '1px solid var(--red)',
             background: 'var(--red-50)',
             borderRadius: 4,
             padding: 14,
@@ -129,14 +129,14 @@ const Execution = ({ stages }) => {
             <div style={{ color: 'var(--red)', flexShrink: 0, marginTop: 2 }}><Ic.warn/></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontWeight: 600, color: '#8a2424' }}>FK violation · validate.fk</span>
+                <span style={{ fontWeight: 600, color: 'var(--red)' }}>FK violation · validate.fk</span>
                 <StatusBadge tone="err">4 rows</StatusBadge>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: '#8a2424' }}>table = GL_ENTRY</span>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--red)' }}>table = GL_ENTRY</span>
               </div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: '#6e2020', lineHeight: 1.6 }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--red)', lineHeight: 1.6 }}>
                 GL_ENTRY.acct_no → ACCT_MASTER.account_no<br/>
-                first offending row: <span style={{ background: 'var(--panel)', padding: '0 4px', borderRadius: 2, border: '1px solid #e5b2b2' }}>AC00881104</span>
-                <span style={{ color: '#8a5555' }}> · offset 0x1F08B2C0</span>
+                first offending row: <span style={{ background: 'var(--panel)', padding: '0 4px', borderRadius: 2, border: '1px solid var(--red)' }}>AC00881104</span>
+                <span style={{ color: 'var(--red)' }}> · offset 0x1F08B2C0</span>
               </div>
               <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                 <Btn kind="primary" size="sm">Quarantine rows & continue</Btn>
@@ -149,7 +149,7 @@ const Execution = ({ stages }) => {
 
           {/* Warning callout */}
           <div style={{
-            border: '1px solid #ebcf8e',
+            border: '1px solid var(--amber)',
             background: 'var(--amber-50)',
             borderRadius: 4,
             padding: 12,
@@ -158,11 +158,11 @@ const Execution = ({ stages }) => {
             <div style={{ color: 'var(--amber)', marginTop: 2 }}><Ic.warn/></div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontWeight: 600, color: '#7a4d05' }}>invalid EBCDIC byte 0x3F</span>
+                <span style={{ fontWeight: 600, color: 'var(--amber)' }}>invalid EBCDIC byte 0x3F</span>
                 <StatusBadge tone="warn">aborted</StatusBadge>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: '#7a4d05' }}>KYC_DOCUMENT · offset 0x1A08B2C</span>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--amber)' }}>KYC_DOCUMENT · offset 0x1A08B2C</span>
               </div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: '#6b4307', lineHeight: 1.55 }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--amber)', lineHeight: 1.55 }}>
                 source dataset contains a codepoint not defined in codepage IBM-939. Scheduler backed off to single-threaded retry.
               </div>
               <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>

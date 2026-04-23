@@ -7,23 +7,46 @@ const TENANT = 'KDB Bank';
    Demonstrates all four import states across the seeded project list. */
 const ddlMeta = (filename, date, tables, columns) => ({ filename, uploadedAt: date, tables, columns });
 
+/* Connection state per side. Mocked — real tool would test TCP/DB protocol. */
+const connMeta = (status, opts = {}) => ({
+  status, // 'ok' | 'failed' | 'stale' | 'untested' | 'testing'
+  lastTestedAt: opts.lastTestedAt ?? (status === 'ok' ? '2 hr ago' : status === 'stale' ? '3 days ago' : status === 'failed' ? '5 min ago' : null),
+  latencyMs: opts.latencyMs ?? (status === 'ok' ? 23 : null),
+  detectedTables: opts.detectedTables ?? null,
+  error: opts.error ?? (status === 'failed' ? 'Timeout after 30s (mock)' : null),
+  credentials: {
+    username: opts.username ?? 'app_ops',
+    authMethod: opts.authMethod ?? 'password',
+    passwordSet: opts.passwordSet !== false,
+    lastRotated: opts.lastRotated ?? '2026-03-15',
+  },
+});
+
 const PROJECTS = [
   { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
-    ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) } },
+    ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) },
+    connections: { asis: connMeta('ok', { latencyMs: 42, detectedTables: 142 }), tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) } },
   { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
-    ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) } },
+    ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) },
+    connections: { asis: connMeta('ok', { latencyMs: 31, detectedTables: 87 }), tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) } },
   { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
-    ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null } },
+    ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null },
+    connections: { asis: connMeta('stale', { latencyMs: 78, detectedTables: 34 }), tobe: connMeta('untested') } },
   { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
-    ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) } },
+    ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) },
+    connections: { asis: connMeta('untested'), tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) } },
   { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
-    ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) } },
+    ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) },
+    connections: { asis: connMeta('ok', { latencyMs: 38, detectedTables: 28 }), tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) } },
   { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
-    ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) } },
+    ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) },
+    connections: { asis: connMeta('ok', { latencyMs: 27, detectedTables: 113 }), tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) } },
   { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
-    ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) } },
+    ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) },
+    connections: { asis: connMeta('ok', { latencyMs: 55, detectedTables: 19 }), tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) } },
   { id: 'p8', name: 'Remittance Hub',        client: TENANT, tables: 0,   status: 'waiting', src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
-    ddl: { asis: null, tobe: null } },
+    ddl: { asis: null, tobe: null },
+    connections: { asis: connMeta('untested'), tobe: connMeta('untested') } },
 ];
 
 /* Dashboard tables */
@@ -274,6 +297,71 @@ const SCHEMA_DIFF = [
       { name: 'branch_code',    type: 'CHAR(4)',       nullable: false,           renameFrom: 'BR_CODE',    renameConfidence: 0.95 },
       { name: 'source_year',    type: 'SMALLINT',      nullable: false,           added: true, default: 'extract(year from occurred_at)' },
       { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  /* ─── Unrouted TO-BE stubs ───────────────────────────────────────
+     TO-BE target schemas that are known (from TO-BE DDL import) but have no
+     AS-IS source assigned yet. Appear in the inventory as 'no source', and
+     are bindable via Route to TO-BE… / Add source pickers — selecting an
+     AS-IS populates sources[] and activates the normal mapping flow. */
+  {
+    table: 'LOAN',
+    asis: null,
+    tobe: 'public.loan',
+    sources: [],
+    asisCols: [],
+    tobeCols: [
+      { name: 'loan_id',          type: 'VARCHAR(20)',   nullable: false, pk: true, added: true, default: 'NULL' },
+      { name: 'customer_id',      type: 'VARCHAR(10)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'product_code',     type: 'VARCHAR(8)',    nullable: false,           added: true, default: 'NULL' },
+      { name: 'amount',           type: 'NUMERIC(15,2)', nullable: false,           added: true, default: '0' },
+      { name: 'interest_rate',    type: 'NUMERIC(9,6)',  nullable: false,           added: true, default: '0' },
+      { name: 'term_months',      type: 'SMALLINT',      nullable: false,           added: true, default: '0' },
+      { name: 'disbursed_at',     type: 'TIMESTAMP',     nullable: true,            added: true, default: 'NULL' },
+      { name: 'maturity_date',    type: 'DATE',          nullable: true,            added: true, default: 'NULL' },
+      { name: 'status',           type: 'VARCHAR(16)',   nullable: false,           added: true, default: "'ACTIVE'" },
+      { name: 'branch_code',      type: 'CHAR(4)',       nullable: false,           added: true, default: 'NULL' },
+      { name: 'officer_id',       type: 'VARCHAR(8)',    nullable: true,            added: true, default: 'NULL' },
+      { name: 'collateral_id',    type: 'VARCHAR(20)',   nullable: true,            added: true, default: 'NULL' },
+      { name: 'outstanding',      type: 'NUMERIC(15,2)', nullable: false,           added: true, default: '0' },
+      { name: 'last_payment_at',  type: 'TIMESTAMP',     nullable: true,            added: true, default: 'NULL' },
+      { name: 'created_at',       type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'CARD',
+    asis: null,
+    tobe: 'public.card',
+    sources: [],
+    asisCols: [],
+    tobeCols: [
+      { name: 'card_id',       type: 'VARCHAR(20)',   nullable: false, pk: true, added: true, default: 'NULL' },
+      { name: 'account_no',    type: 'VARCHAR(16)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'card_number',   type: 'VARCHAR(19)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'card_type',     type: 'VARCHAR(12)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'holder_name',   type: 'VARCHAR(80)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'issued_at',     type: 'DATE',          nullable: false,           added: true, default: 'NULL' },
+      { name: 'expires_at',    type: 'DATE',          nullable: false,           added: true, default: 'NULL' },
+      { name: 'status',        type: 'VARCHAR(12)',   nullable: false,           added: true, default: "'ACTIVE'" },
+      { name: 'credit_limit',  type: 'NUMERIC(12,2)', nullable: true,            added: true, default: '0' },
+      { name: 'last_used_at',  type: 'TIMESTAMP',     nullable: true,            added: true, default: 'NULL' },
+      { name: 'created_at',    type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'FX_POSITION',
+    asis: null,
+    tobe: 'public.fx_position',
+    sources: [],
+    asisCols: [],
+    tobeCols: [
+      { name: 'position_id',    type: 'VARCHAR(20)',   nullable: false, pk: true, added: true, default: 'NULL' },
+      { name: 'currency_pair',  type: 'CHAR(6)',       nullable: false,           added: true, default: 'NULL' },
+      { name: 'position_date',  type: 'DATE',          nullable: false,           added: true, default: 'NULL' },
+      { name: 'amount',         type: 'NUMERIC(18,4)', nullable: false,           added: true, default: '0' },
+      { name: 'rate',           type: 'NUMERIC(12,6)', nullable: false,           added: true, default: '0' },
+      { name: 'trader_id',      type: 'VARCHAR(8)',    nullable: true,            added: true, default: 'NULL' },
+      { name: 'booked_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
     ],
   },
 ];
@@ -595,10 +683,132 @@ const buildTobeInventory = () => {
 const getAsisInventory = () => buildAsisInventory();
 const getTobeInventory = () => buildTobeInventory();
 
+/* ─── Source Discovery / Profiling (mock) ──────────────────────────
+   Real tool would derive these from an AS-IS DB connection (SELECT ...
+   LIMIT 10 for samples, ANALYZE / information_schema queries for stats).
+   Here we generate deterministic pseudo-values keyed off column name+type
+   so the demo is stable across reloads. */
+
+/* Seeded PRNG — consistent values for the same input. */
+const seedRng = (key) => {
+  let s = 0;
+  for (const c of key) s = ((s * 31) + c.charCodeAt(0)) | 0;
+  return (k = 0) => {
+    s = (s * 9301 + (k + 1) * 49297 + 7919) | 0;
+    return ((s >>> 0) % 1000000) / 1000000;
+  };
+};
+
+/* Plausible mock column profile — null %, distinct cardinality, sample
+   min/max, top values for low-cardinality fields. */
+const mockColumnProfile = (col, tableName, totalRows) => {
+  const rng = seedRng(tableName + '::' + col.name);
+  const nullPct = col.nullable === false ? 0 : Math.round(rng(1) * 200) / 10;
+  const low = col.type.includes('CHAR(1)') || col.type === 'CHAR(2)' || col.type.includes('CHAR(3)') || col.type === 'BOOLEAN';
+  const distinct = col.pk
+    ? totalRows
+    : low
+      ? 2 + Math.floor(rng(2) * 8)
+      : Math.max(1, Math.floor(totalRows * (0.05 + rng(2) * 0.9)));
+  const isNumeric = /COMP-3|NUMERIC|INTEGER|SMALLINT|BIGINT|DECIMAL/.test(col.type);
+  const isDate = /DATE|YYYYMMDD/.test(col.type);
+  const isTimestamp = /TIMESTAMP|CHAR\(14\)|HHMMSS/.test(col.type);
+  let min = null, max = null;
+  if (isNumeric) {
+    min = Math.floor(rng(3) * 100).toString();
+    max = (10_000 + Math.floor(rng(4) * 999_999)).toLocaleString();
+  } else if (isDate) {
+    const y1 = 2015 + Math.floor(rng(3) * 6);
+    const y2 = y1 + Math.floor(rng(4) * 6) + 1;
+    min = `${y1}-01-08`;
+    max = `${y2}-12-22`;
+  } else if (isTimestamp) {
+    min = '2019-04-10 07:12:04';
+    max = '2026-04-21 09:40:55';
+  } else {
+    /* VARCHAR / CHAR — show example length range */
+    const m = col.type.match(/\((\d+)/);
+    const maxLen = m ? +m[1] : 20;
+    min = `${Math.max(1, Math.floor(rng(3) * maxLen / 2))}`;
+    max = `${maxLen}`;
+  }
+  /* Low-cardinality → top-values distribution */
+  let topValues = null;
+  if (low && distinct <= 10) {
+    const labels = col.name.includes('STATUS') ? ['A','C','D','P','X'].slice(0, distinct)
+      : col.name.includes('DR_CR') ? ['D','C'].slice(0, distinct)
+      : col.name.includes('FLG') || col.name.includes('FLAG') ? ['Y','N'].slice(0, distinct)
+      : col.name.includes('GENDER') ? ['M','F','U'].slice(0, distinct)
+      : Array.from({length: distinct}, (_, i) => String.fromCharCode(65 + i));
+    let remaining = 100;
+    topValues = labels.map((l, i) => {
+      const share = i === labels.length - 1 ? remaining : Math.max(1, Math.round((remaining * (0.5 + rng(10 + i) * 0.3))));
+      remaining -= share;
+      return { value: l, pct: share };
+    }).sort((a, b) => b.pct - a.pct);
+  }
+  return {
+    nullPct,
+    distinct,
+    min, max,
+    topValues,
+    rangeKind: isNumeric ? 'numeric' : isDate ? 'date' : isTimestamp ? 'timestamp' : 'string',
+  };
+};
+
+/* Plausible 10-row sample for an AS-IS table — uses actual column schemas
+   from ASIS_COLUMN_SCHEMA to generate type-appropriate mock values. Values
+   mimic EBCDIC/COMP-3/YYYYMMDD originals where the type indicates so. */
+const mockTableSamples = (tableName, count = 10) => {
+  const cols = ASIS_COLUMN_SCHEMA[tableName] || [];
+  if (cols.length === 0) return [];
+  const rng = seedRng('sample::' + tableName);
+  const rows = [];
+  for (let r = 0; r < count; r++) {
+    const row = {};
+    cols.forEach((c, ci) => {
+      const k = r * 100 + ci;
+      const bankKey = c.name;
+      const bank = (SAMPLE_SOURCE_ROWS || {})[bankKey];
+      if (bank && bank[r]) { row[c.name] = bank[r]; return; }
+      /* Synthesize by type */
+      if (c.type.includes('YYYYMMDD')) {
+        const y = 2021 + Math.floor(rng(k) * 5);
+        const m = String(1 + Math.floor(rng(k + 1) * 12)).padStart(2, '0');
+        const d = String(1 + Math.floor(rng(k + 2) * 28)).padStart(2, '0');
+        row[c.name] = `${y}${m}${d}`;
+      } else if (c.type.includes('HHMMSS')) {
+        row[c.name] = `${String(Math.floor(rng(k) * 24)).padStart(2, '0')}${String(Math.floor(rng(k+1) * 60)).padStart(2, '0')}${String(Math.floor(rng(k+2) * 60)).padStart(2, '0')}`;
+      } else if (c.type.includes('CHAR(14)')) {
+        row[c.name] = r === 3 ? '00000000000000' : `2026${String(Math.floor(rng(k) * 12) + 1).padStart(2, '0')}${String(Math.floor(rng(k+1) * 28) + 1).padStart(2, '0')}${String(Math.floor(rng(k+2) * 24)).padStart(2, '0')}${String(Math.floor(rng(k+3) * 60)).padStart(2, '0')}${String(Math.floor(rng(k+4) * 60)).padStart(2, '0')}`;
+      } else if (c.type.includes('COMP-3')) {
+        row[c.name] = `+${String(Math.floor(rng(k) * 999999999)).padStart(11, '0')}{`;
+      } else if (c.type.includes('EBCDIC-KANA') || c.type.includes('EBCDIC-KANJI')) {
+        row[c.name] = ['ﾀﾞｲｲﾁ', 'ｽｽﾞｷ', 'ﾔﾏﾀﾞ', 'ｶﾄｳ', 'ﾖｼﾀﾞ', 'ｲﾄｳ', 'ﾏﾂﾓﾄ', 'ｺﾊﾞﾔｼ', 'ﾀｶﾊｼ', 'ﾀﾅｶ'][r % 10];
+      } else if (c.name.includes('STATUS')) {
+        row[c.name] = ['A','A','C','A','D','A','A','A','C','A'][r % 10];
+      } else if (c.pk && c.type.startsWith('CHAR')) {
+        const m = c.type.match(/\((\d+)/);
+        const len = m ? +m[1] : 10;
+        row[c.name] = (tableName.split('.').pop().slice(0, 2) + String(r + 1).padStart(Math.max(1, len - 2), '0')).slice(0, len);
+      } else if (c.type.startsWith('CHAR(')) {
+        const m = c.type.match(/\((\d+)/);
+        const len = m ? +m[1] : 4;
+        row[c.name] = (['TYP','CAT','GRP','BRX','REF'][r % 5]).slice(0, len);
+      } else {
+        row[c.name] = '—';
+      }
+    });
+    rows.push(row);
+  }
+  return rows;
+};
+
 Object.assign(window, {
   PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT,
   mappingsFromSchemaDiff, getColumnMappings, getSchemaDiff,
   SAMPLE_SOURCE_ROWS, applyMockTransform,
   getAsisInventory, getTobeInventory,
   ASIS_COLUMN_SCHEMA, effectiveAsisCols,
+  mockColumnProfile, mockTableSamples,
 });

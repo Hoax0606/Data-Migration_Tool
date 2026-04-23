@@ -427,14 +427,14 @@ const Sidebar = ({
                 display: 'flex', alignItems: 'center', gap: 8,
                 width: '100%', padding: '5px 11px',
                 border: 'none', background: 'transparent',
-                color: it.danger ? '#a12929' : 'var(--text)',
+                color: it.danger ? 'var(--red)' : 'var(--text)',
                 cursor: 'pointer', textAlign: 'left',
                 fontSize: 11.5,
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = it.danger ? '#fbeaea' : 'var(--panel-2)'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = it.danger ? 'var(--red-50)' : 'var(--panel-2)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
-              <span style={{ width: 14, textAlign: 'center', color: it.danger ? '#a12929' : 'var(--text-3)', fontFamily: it.icon === 'Aa' ? 'var(--sans)' : 'var(--mono)', fontSize: 10.5 }}>{it.icon}</span>
+              <span style={{ width: 14, textAlign: 'center', color: it.danger ? 'var(--red)' : 'var(--text-3)', fontFamily: it.icon === 'Aa' ? 'var(--sans)' : 'var(--mono)', fontSize: 10.5 }}>{it.icon}</span>
               <span style={{ flex: 1 }}>{it.l}</span>
             </button>
           ))}
