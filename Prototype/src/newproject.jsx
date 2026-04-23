@@ -48,10 +48,12 @@ const NewProjectModal = ({ onClose, onCreate }) => {
     srcHost: 'mf-prod-01.internal',
     srcPath: '/vol/mf',
     srcEnc: 'ebcdic-jp',
+    srcDdl: null,   // { filename, uploadedAt, tables, columns } | null
     tgtKind: 'postgres',
     tgtHost: 'pg-prod.rds.internal',
     tgtDb: 'core_migrated',
     tgtEnc: 'utf8',
+    tgtDdl: null,   // same shape
     validate: true,
     dryRun: true,
     parallel: 8,
@@ -90,6 +92,7 @@ const NewProjectModal = ({ onClose, onCreate }) => {
         parallel: f.parallel, validate: f.validate, dryRun: f.dryRun,
         steward: f.steward,
       },
+      ddl: { asis: f.srcDdl, tobe: f.tgtDdl },
     };
     onCreate(p);
   };
@@ -214,6 +217,9 @@ const NewProjectModal = ({ onClose, onCreate }) => {
               <Field k="Source encoding" hint="used by character-encoding stage">
                 <EncList value={f.srcEnc} onChange={v => set('srcEnc', v)} options={srcEncs}/>
               </Field>
+              <Field k="AS-IS schema (DDL)" hint="optional · can be uploaded later in Settings">
+                <DdlPicker value={f.srcDdl} onChange={v => set('srcDdl', v)} side="asis"/>
+              </Field>
             </Form>
           )}
 
@@ -232,6 +238,9 @@ const NewProjectModal = ({ onClose, onCreate }) => {
               </div>
               <Field k="Target encoding">
                 <EncList value={f.tgtEnc} onChange={v => set('tgtEnc', v)} options={TARGET_ENCODINGS}/>
+              </Field>
+              <Field k="TO-BE schema (DDL)" hint="optional · can be uploaded later in Settings">
+                <DdlPicker value={f.tgtDdl} onChange={v => set('tgtDdl', v)} side="tobe"/>
               </Field>
               <div style={{
                 padding: 10, background: 'var(--panel-2)', border: '1px solid var(--border)',
@@ -457,5 +466,66 @@ const Check = ({ checked, onChange, label }) => (
 function slugify(s) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
+
+/* Inline DDL file picker used by the New Project wizard.
+   Real parsing is out of scope; size-based heuristic fakes the counts. */
+const DdlPicker = ({ value, onChange, side }) => {
+  const ref = React.useRef();
+  const pick = (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const fakeTables = Math.max(1, Math.floor(file.size / 1800));
+    const fakeCols   = Math.max(1, Math.floor(file.size / 180));
+    const now = new Date();
+    onChange({
+      filename: file.name,
+      uploadedAt: now.toISOString().slice(0, 16).replace('T', ' '),
+      tables: fakeTables,
+      columns: fakeCols,
+    });
+    ev.target.value = '';
+  };
+
+  if (value) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '6px 10px', borderRadius: 3,
+        border: '1px solid var(--green)', background: 'var(--green-50)',
+        fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)',
+      }}>
+        <span style={{ color: 'var(--green)', fontWeight: 600 }}>✓</span>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value.filename}</span>
+        <span style={{ color: 'var(--text-3)', fontSize: 10.5 }}>{value.tables} tables · {value.columns} cols</span>
+        <input type="file" ref={ref} onChange={pick} style={{ display: 'none' }} accept=".sql,.ddl,.yaml,.yml,.txt"/>
+        <button onClick={() => ref.current?.click()} style={{
+          border: 'none', background: 'transparent', color: 'var(--navy)',
+          cursor: 'pointer', fontSize: 11, textDecoration: 'underline',
+        }}>replace</button>
+        <button onClick={() => onChange(null)} style={{
+          border: 'none', background: 'transparent', color: 'var(--red)',
+          cursor: 'pointer', padding: 0, display: 'inline-flex',
+        }} title="remove"><Ic.x/></button>
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '6px 10px', borderRadius: 3,
+      border: '1px dashed var(--border-strong)', background: 'var(--panel-2)',
+      fontSize: 11.5, color: 'var(--text-3)',
+    }}>
+      <span>DDL 파일 선택 ({side === 'asis' ? 'AS-IS' : 'TO-BE'})</span>
+      <span style={{ flex: 1 }}/>
+      <input type="file" ref={ref} onChange={pick} style={{ display: 'none' }} accept=".sql,.ddl,.yaml,.yml,.txt"/>
+      <button onClick={() => ref.current?.click()} style={{
+        padding: '2px 10px', fontSize: 11, fontFamily: 'var(--mono)',
+        border: '1px solid var(--border-strong)', background: 'var(--panel)',
+        color: 'var(--text)', borderRadius: 3, cursor: 'pointer',
+      }}>Choose file…</button>
+    </div>
+  );
+};
 
 window.NewProjectModal = NewProjectModal;

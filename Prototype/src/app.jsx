@@ -254,11 +254,11 @@ const App = () => {
                     onOpenProject={(id, goTab) => { setActiveProject(id); setView('project'); if (goTab) setTab(goTab); else setTab('dashboard'); }}
                     onExportSite={() => alert('Generating site-wide bundle (zip)…')}
                     onOpenExportTab={() => setTab('export')}/>)
-            : project.isNew
+            : project.isNew && tab !== 'settings'
             ? <EmptyProject project={project} tab={tab}/>
             : <>
                 {tab === 'dashboard' && <Dashboard tables={TABLES}/>}
-                {tab === 'mapping'   && <Mapping mapping={MAPPING}/>}
+                {tab === 'mapping'   && <Mapping project={project}/>}
                 {tab === 'execution' && <Execution stages={STAGES}/>}
                 {tab === 'artifacts' && <Artifacts tables={SCHEMA_DIFF} projectTables={TABLES}/>}
                 {tab === 'logs'      && <Logs lines={LOG_LINES}/>}
@@ -273,7 +273,8 @@ const App = () => {
                       setProjects(remaining);
                       if (remaining[0]) setActiveProject(remaining[0].id);
                       setTab('dashboard');
-                    }}/>}
+                    }}
+                    onDdlChange={(side, meta) => setProjects(list => list.map(x => x.id === project.id ? { ...x, ddl: { ...(x.ddl || { asis: null, tobe: null }), [side]: meta } } : x))}/>}
               </>
           }
         </div>

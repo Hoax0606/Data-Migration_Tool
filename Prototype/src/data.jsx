@@ -2,14 +2,28 @@
 
 const TENANT = 'KDB Bank';
 
+/* DDL state on each project: { asis, tobe } where each side is either null
+   (not yet imported) or metadata describing the imported DDL file.
+   Demonstrates all four import states across the seeded project list. */
+const ddlMeta = (filename, date, tables, columns) => ({ filename, uploadedAt: date, tables, columns });
+
 const PROJECTS = [
-  { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago' },
-  { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago' },
-  { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago' },
-  { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago' },
-  { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14' },
-  { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28' },
-  { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02' },
+  { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
+    ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) } },
+  { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
+    ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) } },
+  { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
+    ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null } },
+  { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
+    ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) } },
+  { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
+    ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) } },
+  { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
+    ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) } },
+  { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
+    ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) } },
+  { id: 'p8', name: 'Remittance Hub',        client: TENANT, tables: 0,   status: 'waiting', src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
+    ddl: { asis: null, tobe: null } },
 ];
 
 /* Dashboard tables */
@@ -161,34 +175,44 @@ const SCHEMA_DIFF = [
     ],
   },
   {
+    /* N:1 JOIN demo — two AS-IS tables merge into one TO-BE table */
     table: 'CUST_PROFILE',
-    asis:  'CORE.CUST_PROFILE',
-    tobe:  'public.CUST_PROFILE',
+    asis:  'CORE.CUST_PROFILE ⋈ CORE.CUST_CONTACT',
+    tobe:  'public.customer',
+    sources: [
+      { alias: 'cp', table: 'CORE.CUST_PROFILE', role: 'primary', rows: 2_118_774 },
+      { alias: 'cc', table: 'CORE.CUST_CONTACT', role: 'join', joinType: 'LEFT JOIN', joinOn: 'cp.CUST_ID = cc.CUST_ID', rows: 4_882_091 },
+    ],
     asisCols: [
-      { name: 'CUST_ID',      type: 'CHAR(10)',   nullable: false, pk: true },
-      { name: 'NAME_KANJI',   type: 'CHAR(60) EBCDIC-KANA', nullable: false },
-      { name: 'NAME_KANA',    type: 'CHAR(60) EBCDIC-KANA', nullable: false },
-      { name: 'BIRTH_DT',     type: 'CHAR(8) YYYYMMDD',     nullable: true },
-      { name: 'GENDER_CD',    type: 'CHAR(1)',              nullable: true },
-      { name: 'NATIONALITY',  type: 'CHAR(3)',              nullable: true },
-      { name: 'OPEN_BR',      type: 'CHAR(4)',              nullable: false },
-      { name: 'TEL_NO',       type: 'CHAR(15)',             nullable: true },
-      { name: 'LEGACY_GRADE', type: 'CHAR(1)',              nullable: true },
+      { name: 'CUST_ID',      type: 'CHAR(10)',             nullable: false, pk: true, source: 'cp' },
+      { name: 'NAME_KANJI',   type: 'CHAR(60) EBCDIC-KANA', nullable: false,           source: 'cp' },
+      { name: 'NAME_KANA',    type: 'CHAR(60) EBCDIC-KANA', nullable: false,           source: 'cp' },
+      { name: 'BIRTH_DT',     type: 'CHAR(8) YYYYMMDD',     nullable: true,            source: 'cp' },
+      { name: 'GENDER_CD',    type: 'CHAR(1)',              nullable: true,            source: 'cp' },
+      { name: 'NATIONALITY',  type: 'CHAR(3)',              nullable: true,            source: 'cp' },
+      { name: 'OPEN_BR',      type: 'CHAR(4)',              nullable: false,           source: 'cp' },
+      { name: 'LEGACY_GRADE', type: 'CHAR(1)',              nullable: true,            source: 'cp' },
+      /* columns from CUST_CONTACT (joined) */
+      { name: 'TEL_NO',       type: 'CHAR(15)',             nullable: true,            source: 'cc' },
+      { name: 'EMAIL_ADDR',   type: 'CHAR(80)',             nullable: true,            source: 'cc' },
+      { name: 'PREF_CHANNEL', type: 'CHAR(2)',              nullable: true,            source: 'cc' },
+      { name: 'OPT_IN_FLG',   type: 'CHAR(1)',              nullable: true,            source: 'cc' },
     ],
     tobeCols: [
-      { name: 'CUST_ID',      type: 'CHAR(10)',    nullable: false, pk: true },
-      { name: 'NAME_KANJI',   type: 'VARCHAR(120)',nullable: false },
-      { name: 'NAME_KANA',    type: 'VARCHAR(120)',nullable: false },
-      { name: 'BIRTH_DT',     type: 'DATE',        nullable: true,            renameFrom: 'BIRTH_DT',    renameConfidence: 0.82 },
-      { name: 'GENDER',       type: 'VARCHAR(16)', nullable: true,            renameFrom: 'GENDER_CD',   renameConfidence: 0.72 },
-      { name: 'NATIONALITY',  type: 'CHAR(3)',     nullable: true },
-      { name: 'OPEN_BR',      type: 'CHAR(4)',     nullable: false },
-      { name: 'PHONE_E164',   type: 'VARCHAR(20)', nullable: true,            renameFrom: 'TEL_NO',      renameConfidence: 0.55 },
-      { name: 'EMAIL',        type: 'VARCHAR(255)',nullable: true,            added: true, default: 'NULL' },
-      { name: 'MKT_OPT_IN',   type: 'BOOLEAN',     nullable: false,           added: true, default: 'false' },
-      { name: 'RISK_TIER',    type: 'SMALLINT',    nullable: false,           added: true, default: '3' },
-      { name: 'CREATED_AT',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
-      { name: 'UPDATED_AT',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
+      { name: 'customer_id',  type: 'VARCHAR(10)', nullable: false, pk: true, renameFrom: 'CUST_ID',     renameConfidence: 1.00 },
+      { name: 'name_kanji',   type: 'VARCHAR(120)',nullable: false,           renameFrom: 'NAME_KANJI',  renameConfidence: 0.90 },
+      { name: 'name_kana',    type: 'VARCHAR(120)',nullable: false,           renameFrom: 'NAME_KANA',   renameConfidence: 0.90 },
+      { name: 'birth_date',   type: 'DATE',        nullable: true,            renameFrom: 'BIRTH_DT',    renameConfidence: 0.82 },
+      { name: 'gender',       type: 'VARCHAR(16)', nullable: true,            renameFrom: 'GENDER_CD',   renameConfidence: 0.72 },
+      { name: 'nationality',  type: 'CHAR(3)',     nullable: true,            renameFrom: 'NATIONALITY', renameConfidence: 1.00 },
+      { name: 'open_branch',  type: 'CHAR(4)',     nullable: false,           renameFrom: 'OPEN_BR',     renameConfidence: 0.95 },
+      { name: 'phone_e164',   type: 'VARCHAR(20)', nullable: true,            renameFrom: 'TEL_NO',      renameConfidence: 0.55 },
+      { name: 'email',        type: 'VARCHAR(255)',nullable: true,            renameFrom: 'EMAIL_ADDR',  renameConfidence: 0.95 },
+      { name: 'preferred_channel', type: 'VARCHAR(16)', nullable: true,       renameFrom: 'PREF_CHANNEL',renameConfidence: 0.80 },
+      { name: 'marketing_opt_in',  type: 'BOOLEAN',     nullable: false,      renameFrom: 'OPT_IN_FLG',  renameConfidence: 0.70 },
+      { name: 'risk_tier',    type: 'SMALLINT',    nullable: false,           added: true, default: '3' },
+      { name: 'created_at',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
+      { name: 'updated_at',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
     ],
   },
   {
@@ -221,6 +245,360 @@ const SCHEMA_DIFF = [
       { name: 'created_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
     ],
   },
+  {
+    /* N:1 UNION demo — yearly partitions stacked into a single TO-BE table */
+    table: 'TRANSACTION_UNIFIED',
+    asis:  'CORE.TXN_JOURNAL_2023 ∪ CORE.TXN_JOURNAL_2024',
+    tobe:  'public.transaction_all',
+    sources: [
+      { alias: 't23', table: 'CORE.TXN_JOURNAL_2023', role: 'union', rows: 284_003_117 },
+      { alias: 't24', table: 'CORE.TXN_JOURNAL_2024', role: 'union', rows: 312_889_001 },
+    ],
+    asisCols: [
+      { name: 'TXN_ID',     type: 'CHAR(24)',            nullable: false, pk: true, source: 't23+t24' },
+      { name: 'ACCT_NO',    type: 'CHAR(16)',            nullable: false,           source: 't23+t24' },
+      { name: 'TXN_DT',     type: 'CHAR(8) YYYYMMDD',    nullable: false,           source: 't23+t24' },
+      { name: 'TXN_TM',     type: 'CHAR(6) HHMMSS',      nullable: false,           source: 't23+t24' },
+      { name: 'AMT',        type: 'COMP-3 S9(13)V99',    nullable: false,           source: 't23+t24' },
+      { name: 'DR_CR',      type: 'CHAR(1)',             nullable: false,           source: 't23+t24' },
+      { name: 'CHANNEL_CD', type: 'CHAR(2)',             nullable: false,           source: 't23+t24' },
+      { name: 'BR_CODE',    type: 'CHAR(4)',             nullable: false,           source: 't23+t24' },
+    ],
+    tobeCols: [
+      { name: 'transaction_id', type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'TXN_ID',     renameConfidence: 1.00 },
+      { name: 'account_no',     type: 'VARCHAR(16)',   nullable: false,           renameFrom: 'ACCT_NO',    renameConfidence: 1.00 },
+      { name: 'occurred_at',    type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NULL', mergedFrom: ['TXN_DT', 'TXN_TM'] },
+      { name: 'amount',         type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',        renameConfidence: 1.00 },
+      { name: 'direction',      type: 'VARCHAR(6)',    nullable: false,           renameFrom: 'DR_CR',      renameConfidence: 0.65 },
+      { name: 'channel',        type: 'VARCHAR(16)',   nullable: false,           renameFrom: 'CHANNEL_CD', renameConfidence: 0.80 },
+      { name: 'branch_code',    type: 'CHAR(4)',       nullable: false,           renameFrom: 'BR_CODE',    renameConfidence: 0.95 },
+      { name: 'source_year',    type: 'SMALLINT',      nullable: false,           added: true, default: 'extract(year from occurred_at)' },
+      { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
 ];
 
-Object.assign(window, { PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT });
+/* ─── Synthesis helpers ────────────────────────────────────────────
+   Column-level mapping rows can be derived on-the-fly from a SCHEMA_DIFF
+   entry. Hand-authored MAPPING (for ACCT_MASTER) is kept as-is and used
+   preferentially; every other table is synthesized. */
+
+const mappingsFromSchemaDiff = (t) => {
+  const rows = [];
+  /* Use dynamic asisCols derived from the current sources binding, so the
+     column grid reacts to JOIN/UNION edits in Table binding. */
+  const asisCols = effectiveAsisCols(t);
+  const asisByName = Object.fromEntries(asisCols.map(c => [c.name, c]));
+  const referenced = new Set();
+
+  t.tobeCols.forEach(tc => {
+    if (tc.added) {
+      const mergedSrc = tc.mergedFrom ? tc.mergedFrom.join(' + ') : '—';
+      /* Check merged-from columns exist in current sources. If not, fall
+         back to a 'missing source' warning so the user notices that removing
+         a binding broke a merge target. */
+      const mergedPresent = tc.mergedFrom ? tc.mergedFrom.every(n => asisByName[n]) : true;
+      rows.push({
+        src: mergedSrc, srcType: tc.mergedFrom ? 'multi' : '—',
+        tgt: tc.name, tgtType: tc.type,
+        rule: tc.mergedFrom ? 'rule' : 'added',
+        status: !mergedPresent ? 'err'
+          : (tc.default && tc.default !== 'NULL') ? 'ok'
+          : (tc.mergedFrom ? 'ok' : 'warn'),
+        pk: !!tc.pk,
+        note: !mergedPresent
+          ? `merge source missing: ${tc.mergedFrom.filter(n => !asisByName[n]).join(', ')}`
+          : tc.mergedFrom
+            ? `merge(${tc.mergedFrom.join(' + ')}) → ${tc.type}`
+            : `default = ${tc.default ?? 'NULL'}`,
+        sourceAlias: null,
+      });
+      if (tc.mergedFrom) tc.mergedFrom.forEach(n => referenced.add(n));
+      return;
+    }
+    const srcName = tc.renameFrom || tc.name;
+    const ac = asisByName[srcName];
+    if (!ac) {
+      rows.push({
+        src: srcName, srcType: '?',
+        tgt: tc.name, tgtType: tc.type,
+        rule: 'rule', status: 'err',
+        pk: !!tc.pk, note: 'source column not found (binding removed?)',
+      });
+      return;
+    }
+    referenced.add(srcName);
+    const typeChanged = ac.type !== tc.type;
+    const needsTransform = typeChanged || /EBCDIC|COMP-3|YYYYMMDD|HHMMSS/.test(ac.type);
+    const rule = needsTransform ? 'rule' : 'auto';
+    const lowConf = (tc.renameConfidence ?? 1) < 0.85;
+    rows.push({
+      src: ac.name, srcType: ac.type,
+      tgt: tc.name, tgtType: tc.type,
+      rule,
+      status: lowConf ? 'warn' : 'ok',
+      pk: !!tc.pk,
+      note: lowConf ? `low rename confidence ${Math.round((tc.renameConfidence ?? 1) * 100)}%` : '',
+      sourceAlias: ac.source,
+    });
+  });
+
+  /* AS-IS columns that the current bindings include but no TO-BE references → dropped */
+  asisCols.forEach(ac => {
+    if (!referenced.has(ac.name)) {
+      rows.push({
+        src: ac.name, srcType: ac.type,
+        tgt: '—', tgtType: '—',
+        rule: 'skip', status: 'skip',
+        pk: !!ac.pk, note: 'dropped from TO-BE',
+        sourceAlias: ac.source,
+      });
+    }
+  });
+
+  return rows;
+};
+
+const getColumnMappings = (tableName) => {
+  const sd = SCHEMA_DIFF.find(s => s.table === tableName);
+  return sd ? mappingsFromSchemaDiff(sd) : null;
+};
+
+const getSchemaDiff = (tableName) => SCHEMA_DIFF.find(s => s.table === tableName);
+
+/* Fake sample rows for the Mapping inspector preview. Keyed by source column
+   name; the UI applies the active rule visually (mock — real data requires
+   a live source connection). */
+const SAMPLE_SOURCE_ROWS = {
+  'ACCT-NO':          ['AC00881104','AC00881105','AC00881106','AC00881107','AC00881108','AC00881109','AC00881110','AC00881111','AC00881112','AC00881113'],
+  'CUST-ID':          ['C000124551','C000124552','C000124553','C000124554','C000124555','C000124556','C000124557','C000124558','C000124559','C000124560'],
+  'OPEN-DT':          ['20210412','20210515','20210701','20210812','20210903','20211020','20211125','20220108','20220216','20220330'],
+  'BAL-AMT':          ['+000000001250{','+000000005820C','+000000000000{','+000000124880F','+000000002500D','+000000098214G','+000000011030A','+000000000005{','+000000552200M','+000000078820B'],
+  'STATUS-FLG':       ['A','A','C','A','D','A','A','A','C','A'],
+  'ACCT-NAME-KANJI':  ['ﾀﾞｲｲﾁﾌｼﾞﾉ','ｽｽﾞｷｻﾄｼ','ﾔﾏﾀﾞﾊﾅｺ','ｶﾄｳｹﾝｼﾞ','ﾖｼﾀﾞｱｲｺ','ｲﾄｳﾊﾙｷ','ﾏﾂﾓﾄﾕｳ','ｺﾊﾞﾔｼﾃﾂﾔ','ﾀｶﾊｼﾅｵ','ﾀﾅｶﾐｷ'],
+  'UPD-TS':           ['20260420091230','20260420091405','20260420091640','00000000000000','20260420092105','20260420092340','20260420092615','20260420092850','20260420093125','20260420093400'],
+  'TEL_NO':           ['0312345678','0801112222','0903334444','0455556666','0667778888','0789990000','0312346789','0801113333','0903335555','0455557777'],
+  'EMAIL_ADDR':       ['tanaka@example.co.jp','suzuki@example.jp','yamada@corp.jp','kato@mail.co.jp','yoshida@ex.jp','ito@example.jp','matsumoto@corp.jp','kobayashi@mail.jp','takahashi@ex.jp','tanaka.m@example.jp'],
+  'TXN_DT':           ['20240312','20240312','20240313','20240313','20240313','20240314','20240314','20240315','20240315','20240316'],
+  'AMT':              ['+000000050000{','+000000120000C','+000000008200D','+000000450000{','+000000020000F','+000000007500A','+000000330000{','+000000000500D','+000000180000{','+000000065000C'],
+  '_default':         ['row 001','row 002','row 003','row 004','row 005','row 006','row 007','row 008','row 009','row 010'],
+};
+
+const applyMockTransform = (srcVal, row) => {
+  /* Light heuristic: show how the transform would change the value visually */
+  const r = row || {};
+  if (!srcVal) return srcVal;
+  if (r.rule === 'skip' || r.rule === 'added') return '—';
+  const srcT = r.srcType || '';
+  const tgtT = r.tgtType || '';
+  if (srcT.includes('YYYYMMDD') && tgtT === 'DATE' && /^\d{8}$/.test(srcVal)) {
+    return `${srcVal.slice(0,4)}-${srcVal.slice(4,6)}-${srcVal.slice(6,8)}`;
+  }
+  if (srcT.includes('CHAR(14)') && tgtT.includes('TIMESTAMP')) {
+    if (srcVal === '00000000000000') return 'NULL';
+    return `${srcVal.slice(0,4)}-${srcVal.slice(4,6)}-${srcVal.slice(6,8)} ${srcVal.slice(8,10)}:${srcVal.slice(10,12)}:${srcVal.slice(12,14)}`;
+  }
+  if (srcT.includes('COMP-3')) {
+    /* fake COMP-3 unpack — take numeric chars and pretend decimal scale */
+    const digits = (srcVal.match(/\d+/g) || []).join('');
+    if (!digits) return srcVal;
+    const scaled = (parseInt(digits, 10) / 100).toFixed(2);
+    return (srcVal.startsWith('-') ? '-' : '') + scaled;
+  }
+  if (srcT.includes('EBCDIC-KANA') || srcT.includes('EBCDIC-KANJI') || srcT.includes('EBCDIC')) {
+    /* fake iconv — just tag the value */
+    return `${srcVal}  (utf-8)`;
+  }
+  if (r.note && r.note.includes("A→'ACTIVE'")) {
+    const m = { A: 'ACTIVE', C: 'CLOSED', D: 'DORMANT' };
+    return m[srcVal] || srcVal;
+  }
+  return srcVal;
+};
+
+/* ─── AS-IS / TO-BE inventory — DDL-derived ground truth ──────────
+   Both sides' table lists are stable once DDL is imported and do NOT
+   depend on current bindings. This matches reality: DDL parsing yields
+   a fixed schema; bindings are a separate overlay that may reference
+   any subset of those tables.
+
+   Build helpers overlay routing/composition info from SCHEMA_DIFF
+   but never let that information remove a table from the inventory. */
+
+const ASIS_SCHEMA_TABLES = [
+  { name: 'CORE.ACCT_MASTER',       columnCount: 13, rows: 18_442_331 },
+  { name: 'CORE.CUST_PROFILE',      columnCount: 8,  rows: 2_118_774 },
+  { name: 'CORE.CUST_CONTACT',      columnCount: 4,  rows: 4_882_091 },
+  { name: 'CORE.TXN_JOURNAL_2023',  columnCount: 9,  rows: 284_003_117 },
+  { name: 'CORE.TXN_JOURNAL_2024',  columnCount: 9,  rows: 312_889_001 },
+  { name: 'CORE.LEGACY_GRADE_DICT', columnCount: 2,  rows: 45,          note: 'reference table · never migrated' },
+  { name: 'CORE.MAINT_WORK_TEMP',   columnCount: 6,  rows: 120,         note: 'scratch work area · drop after cutover' },
+  { name: 'CORE.ORG_HIST',          columnCount: 8,  rows: 3120,        note: 'pending steward decision' },
+];
+
+const TOBE_SCHEMA_TABLES = [
+  { name: 'public.account',          columnCount: 18 },
+  { name: 'public.customer',         columnCount: 14 },
+  { name: 'public.transaction_2024', columnCount: 12 },
+  { name: 'public.transaction_all',  columnCount: 9 },
+  { name: 'public.loan',             columnCount: 15, note: 'Loan Origination scope · no source assigned yet' },
+  { name: 'public.card',             columnCount: 11, note: 'Card Authorization scope · no source assigned yet' },
+  { name: 'public.fx_position',      columnCount: 7,  note: 'FX Treasury scope · no source assigned yet' },
+];
+
+/* Per-AS-IS-table column schema — the canonical "DDL parse output" for every
+   known AS-IS table. effectiveAsisCols(sd) reads this keyed by the current
+   sources of a binding and assembles a dynamic asisCols list that reacts to
+   JOIN/UNION edits. The hand-tuned sd.asisCols on SCHEMA_DIFF entries is
+   kept for the artifacts/schema-diff view but no longer drives the Mapping
+   column grid directly. */
+const TXN_JOURNAL_COLS = [
+  { name: 'TXN_ID',     type: 'CHAR(24)',            nullable: false, pk: true },
+  { name: 'ACCT_NO',    type: 'CHAR(16)',            nullable: false },
+  { name: 'TXN_DT',     type: 'CHAR(8) YYYYMMDD',    nullable: false },
+  { name: 'TXN_TM',     type: 'CHAR(6) HHMMSS',      nullable: false },
+  { name: 'AMT',        type: 'COMP-3 S9(13)V99',    nullable: false },
+  { name: 'DR_CR',      type: 'CHAR(1)',             nullable: false },
+  { name: 'BR_CODE',    type: 'CHAR(4)',             nullable: false },
+  { name: 'CHANNEL_CD', type: 'CHAR(2)',             nullable: false },
+  { name: 'MEMO',       type: 'CHAR(40) EBCDIC-KANA', nullable: true },
+];
+
+const ASIS_COLUMN_SCHEMA = {
+  'CORE.ACCT_MASTER': [
+    { name: 'ACCT_NO',         type: 'CHAR(16)',            nullable: false, pk: true },
+    { name: 'CUST_ID',         type: 'CHAR(10)',            nullable: false },
+    { name: 'BR_CODE',         type: 'CHAR(4)',             nullable: false },
+    { name: 'ACCT_TYPE',       type: 'CHAR(2)',             nullable: false },
+    { name: 'CURRENCY_CD',     type: 'CHAR(3)',             nullable: false },
+    { name: 'BAL_AMT',         type: 'COMP-3 S9(13)V99',    nullable: false },
+    { name: 'OPEN_DT',         type: 'CHAR(8) YYYYMMDD',    nullable: false },
+    { name: 'STATUS_FLG',      type: 'CHAR(1)',             nullable: false },
+    { name: 'ACCT_NAME_KANJI', type: 'CHAR(40) EBCDIC-KANA', nullable: true },
+    { name: 'FILLER_01',       type: 'CHAR(20)',            nullable: true },
+    { name: 'RSRV_FLAG',       type: 'CHAR(1)',             nullable: true },
+    { name: 'UPD_USER',        type: 'CHAR(8)',             nullable: true },
+    { name: 'UPD_TS',          type: 'CHAR(14)',            nullable: true },
+  ],
+  'CORE.CUST_PROFILE': [
+    { name: 'CUST_ID',      type: 'CHAR(10)',             nullable: false, pk: true },
+    { name: 'NAME_KANJI',   type: 'CHAR(60) EBCDIC-KANA', nullable: false },
+    { name: 'NAME_KANA',    type: 'CHAR(60) EBCDIC-KANA', nullable: false },
+    { name: 'BIRTH_DT',     type: 'CHAR(8) YYYYMMDD',     nullable: true },
+    { name: 'GENDER_CD',    type: 'CHAR(1)',              nullable: true },
+    { name: 'NATIONALITY',  type: 'CHAR(3)',              nullable: true },
+    { name: 'OPEN_BR',      type: 'CHAR(4)',              nullable: false },
+    { name: 'LEGACY_GRADE', type: 'CHAR(1)',              nullable: true },
+  ],
+  'CORE.CUST_CONTACT': [
+    { name: 'TEL_NO',       type: 'CHAR(15)', nullable: true },
+    { name: 'EMAIL_ADDR',   type: 'CHAR(80)', nullable: true },
+    { name: 'PREF_CHANNEL', type: 'CHAR(2)',  nullable: true },
+    { name: 'OPT_IN_FLG',   type: 'CHAR(1)',  nullable: true },
+  ],
+  'CORE.TXN_JOURNAL_2023': TXN_JOURNAL_COLS,
+  'CORE.TXN_JOURNAL_2024': TXN_JOURNAL_COLS,
+  'CORE.LEGACY_GRADE_DICT': [
+    { name: 'GRADE_CD',   type: 'CHAR(1)',  nullable: false, pk: true },
+    { name: 'GRADE_NAME', type: 'CHAR(20)', nullable: false },
+  ],
+  'CORE.MAINT_WORK_TEMP': [
+    { name: 'WORK_ID',   type: 'CHAR(8)',          nullable: false, pk: true },
+    { name: 'WORK_TYPE', type: 'CHAR(4)',          nullable: false },
+    { name: 'WORK_DT',   type: 'CHAR(8) YYYYMMDD', nullable: true },
+    { name: 'AMOUNT',    type: 'COMP-3 S9(11)V99', nullable: true },
+    { name: 'STATUS',    type: 'CHAR(1)',          nullable: true },
+    { name: 'NOTE',      type: 'CHAR(100)',        nullable: true },
+  ],
+  'CORE.ORG_HIST': [
+    { name: 'ORG_ID',     type: 'CHAR(6)',              nullable: false, pk: true },
+    { name: 'ORG_NAME',   type: 'CHAR(60) EBCDIC-KANA', nullable: false },
+    { name: 'PARENT_ORG', type: 'CHAR(6)',              nullable: true },
+    { name: 'OPEN_DT',    type: 'CHAR(8) YYYYMMDD',     nullable: false },
+    { name: 'CLOSE_DT',   type: 'CHAR(8) YYYYMMDD',     nullable: true },
+    { name: 'MANAGER',    type: 'CHAR(8)',              nullable: true },
+    { name: 'REGION_CD',  type: 'CHAR(2)',              nullable: true },
+    { name: 'STATUS',     type: 'CHAR(1)',              nullable: false },
+  ],
+};
+
+/* Derive the AS-IS column list for a given SCHEMA_DIFF entry, reacting to the
+   current sources (which the Table binding editor can mutate). */
+const effectiveAsisCols = (sd) => {
+  if (!sd) return [];
+  const sources = (sd.sources && sd.sources.length > 0)
+    ? sd.sources
+    : (sd.asis ? [{ alias: null, table: sd.asis, role: 'primary' }] : []);
+  const cols = [];
+  const seen = new Map(); // column name → idx in cols (for UNION merge)
+  const isUnion = sources[0]?.role === 'union';
+
+  sources.forEach(s => {
+    const tableCols = ASIS_COLUMN_SCHEMA[s.table] || [];
+    tableCols.forEach(c => {
+      if (isUnion) {
+        if (seen.has(c.name)) {
+          const existing = cols[seen.get(c.name)];
+          existing.source = [existing.source, s.alias].filter(Boolean).join('+');
+        } else {
+          seen.set(c.name, cols.length);
+          cols.push({ ...c, source: s.alias });
+        }
+      } else {
+        cols.push({ ...c, source: s.alias });
+      }
+    });
+  });
+  return cols;
+};
+
+const buildAsisInventory = () => {
+  /* Routing info overlaid from bindings — never removes tables from the list. */
+  const routingMap = new Map();
+  SCHEMA_DIFF.forEach(sd => {
+    const sources = sd.sources || (sd.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
+    sources.forEach(s => {
+      const list = routingMap.get(s.table) || [];
+      list.push({ tobe: sd.tobe, via: sd.table, role: s.role });
+      routingMap.set(s.table, list);
+    });
+  });
+  return ASIS_SCHEMA_TABLES.map(t => {
+    const routing = routingMap.get(t.name) || [];
+    return {
+      ...t,
+      tableShort: t.name.split('.').pop(),
+      routing,
+      unrouted: routing.length === 0,
+    };
+  });
+};
+
+const buildTobeInventory = () => {
+  return TOBE_SCHEMA_TABLES.map(t => {
+    const sd = SCHEMA_DIFF.find(s => s.tobe === t.name);
+    const sources = sd?.sources || (sd?.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
+    const kind = sources.length > 1
+      ? (sources[0].role === 'union' ? 'union' : 'join')
+      : sources.length === 1 ? 'single' : 'none';
+    return {
+      ...t,
+      tableShort: t.name.split('.').pop(),
+      sources,
+      compositionKind: kind,
+      internalName: sd?.table,
+      unrouted: sources.length === 0,
+    };
+  });
+};
+
+const getAsisInventory = () => buildAsisInventory();
+const getTobeInventory = () => buildTobeInventory();
+
+Object.assign(window, {
+  PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT,
+  mappingsFromSchemaDiff, getColumnMappings, getSchemaDiff,
+  SAMPLE_SOURCE_ROWS, applyMockTransform,
+  getAsisInventory, getTobeInventory,
+  ASIS_COLUMN_SCHEMA, effectiveAsisCols,
+});

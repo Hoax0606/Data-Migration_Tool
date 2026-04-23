@@ -1,6 +1,6 @@
 /* Project Settings tab — general, source/target, schedule, notifications, danger zone */
 
-const ProjectSettings = ({ project, onDelete, onDuplicate, onRename }) => {
+const ProjectSettings = ({ project, onDelete, onDuplicate, onRename, onDdlChange }) => {
   const [section, setSection] = React.useState('general');
 
   const sections = [
@@ -55,8 +55,8 @@ const ProjectSettings = ({ project, onDelete, onDuplicate, onRename }) => {
 
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '18px 26px 40px' }}>
         {section === 'general'  && <PSGeneral  project={project} onRename={onRename}/>}
-        {section === 'source'   && <PSSource   project={project}/>}
-        {section === 'target'   && <PSTarget   project={project}/>}
+        {section === 'source'   && <PSSource   project={project} onDdlChange={onDdlChange}/>}
+        {section === 'target'   && <PSTarget   project={project} onDdlChange={onDdlChange}/>}
         {section === 'schedule' && <PSSchedule project={project}/>}
         {section === 'notify'   && <PSNotify/>}
         {section === 'access'   && <PSAccess/>}
@@ -106,7 +106,7 @@ const PSGeneral = ({ project, onRename }) => {
   );
 };
 
-const PSSource = ({ project }) => (
+const PSSource = ({ project, onDdlChange }) => (
   <>
     <PSHead title="Source" desc="Legacy system this project reads from."
       actions={<Btn kind="secondary" size="sm">Test connection</Btn>}/>
@@ -118,10 +118,18 @@ const PSSource = ({ project }) => (
       <PSRow label="Copybook"><PSInput value="copybook/CIF_MSTR.cpy · 142 fields" mono/></PSRow>
       <PSRow label="Read-only guarantee"><PSToggle on={true} label="Source opened in read-only mode"/></PSRow>
     </PSCard>
+
+    <DdlCard
+      title="AS-IS schema (DDL)"
+      desc="Import the source schema so the Mapping tab can list tables and columns."
+      side="asis"
+      current={project.ddl?.asis}
+      onChange={(v) => onDdlChange?.('asis', v)}
+    />
   </>
 );
 
-const PSTarget = ({ project }) => (
+const PSTarget = ({ project, onDdlChange }) => (
   <>
     <PSHead title="Target" desc="Destination database for migrated data."
       actions={<Btn kind="secondary" size="sm">Test connection</Btn>}/>
@@ -134,7 +142,160 @@ const PSTarget = ({ project }) => (
       <PSRow label="Collation"><PSInput value="ko_KR.UTF-8" mono/></PSRow>
       <PSRow label="SSL mode"><PSInput value="verify-full · corp-ca-2024" readOnly mono/></PSRow>
     </PSCard>
+
+    <DdlCard
+      title="TO-BE schema (DDL)"
+      desc="Import the target schema to enable mapping and DDL artifact generation."
+      side="tobe"
+      current={project.ddl?.tobe}
+      onChange={(v) => onDdlChange?.('tobe', v)}
+    />
   </>
+);
+
+/* Reusable DDL upload card — used by Source and Target sections. */
+const DdlCard = ({ title, desc, side, current, onChange }) => {
+  const fileInputRef = React.useRef();
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  const handlePick = (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    /* Prototype: fake the parse result based on file size. Real impl would
+       parse DDL and return tables/columns counts. */
+    const bytes = file.size;
+    const fakeTables = Math.max(1, Math.floor(bytes / 1800));
+    const fakeCols   = Math.max(1, Math.floor(bytes / 180));
+    const now = new Date();
+    const fmt = now.toISOString().slice(0, 16).replace('T', ' ');
+    onChange?.({
+      filename: file.name,
+      uploadedAt: fmt,
+      tables: fakeTables,
+      columns: fakeCols,
+    });
+    ev.target.value = '';  // allow re-pick of same file
+  };
+
+  return (
+    <div style={{
+      border: `1px solid ${current ? 'var(--border)' : '#e0c89a'}`,
+      borderRadius: 4,
+      background: current ? 'var(--panel)' : '#fffaf0',
+      marginBottom: 14,
+    }}>
+      <div style={{ padding: '10px 14px 9px', borderBottom: '1px solid var(--border)',
+        background: current ? 'var(--panel)' : '#fdf5e6',
+        display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
+            {title}
+            {current
+              ? <StatusBadge tone="ok">imported</StatusBadge>
+              : <StatusBadge tone="warn">not imported</StatusBadge>}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>{desc}</div>
+        </div>
+      </div>
+
+      <div style={{ padding: '12px 14px' }}>
+        {current ? (
+          <>
+            <div style={{
+              display: 'grid', gridTemplateColumns: '180px 1fr', gap: 14,
+              padding: '4px 0', borderBottom: '1px dashed var(--border)',
+            }}>
+              <div style={{ fontSize: 11.5, fontWeight: 500 }}>Filename</div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text)' }}>{current.filename}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 14, padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 500 }}>Imported at</div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>{current.uploadedAt}</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 14, padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 500 }}>Detected</div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
+                {current.tables} tables · {current.columns} columns
+              </div>
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="file" ref={fileInputRef} onChange={handlePick} style={{ display: 'none' }} accept=".sql,.ddl,.yaml,.yml,.txt"/>
+              <Btn kind="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>Re-upload</Btn>
+              <Btn kind="secondary" size="sm">Preview schema</Btn>
+              <div style={{ flex: 1 }}/>
+              <Btn kind="danger" size="sm" onClick={() => setConfirmDelete(true)}>Delete DDL</Btn>
+            </div>
+          </>
+        ) : (
+          <div style={{
+            padding: '14px 10px', textAlign: 'center',
+            border: '1px dashed var(--border-strong)', borderRadius: 4,
+            background: 'var(--panel)',
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>
+              No {side === 'asis' ? 'AS-IS' : 'TO-BE'} DDL imported yet
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 10 }}>
+              Accepts .sql · .ddl · .yaml files
+            </div>
+            <input type="file" ref={fileInputRef} onChange={handlePick} style={{ display: 'none' }} accept=".sql,.ddl,.yaml,.yml,.txt"/>
+            <Btn kind="primary" size="sm" icon={<Ic.download/>} onClick={() => fileInputRef.current?.click()}>
+              Choose DDL file
+            </Btn>
+          </div>
+        )}
+      </div>
+
+      {confirmDelete && (
+        <DdlDeleteConfirm
+          title={title}
+          filename={current?.filename || ''}
+          side={side}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => { onChange?.(null); setConfirmDelete(false); }}
+        />
+      )}
+    </div>
+  );
+};
+
+const DdlDeleteConfirm = ({ title, filename, side, onCancel, onConfirm }) => (
+  <div onClick={onCancel} style={{
+    position: 'fixed', inset: 0, background: 'rgba(20,30,50,.35)',
+    display: 'grid', placeItems: 'center', zIndex: 2000,
+  }}>
+    <div onClick={e => e.stopPropagation()} style={{
+      width: 460, background: 'var(--panel)',
+      border: '1px solid var(--border)', borderRadius: 6,
+      boxShadow: '0 20px 60px rgba(20,30,50,.25)', overflow: 'hidden',
+    }}>
+      <div style={{ padding: '14px 18px 10px', borderBottom: '1px solid var(--border)', background: '#fcf4f4' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#7a1f1f' }}>Delete {title}?</div>
+        <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 3 }}>
+          {side === 'asis'
+            ? 'AS-IS 스키마를 지우면 이 프로젝트의 매핑 정의와 컬럼 연결이 끊어집니다.'
+            : 'TO-BE 스키마를 지우면 DDL 산출물 생성과 검증 리포트가 중단됩니다.'}
+        </div>
+      </div>
+      <div style={{ padding: '14px 18px', fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
+        <div style={{ fontFamily: 'var(--mono)', background: 'var(--panel-2)', padding: '6px 10px', borderRadius: 3 }}>
+          {filename || '(unnamed)'}
+        </div>
+        <div style={{ marginTop: 10 }}>
+          DDL 파일을 다시 업로드하면 복원할 수 있지만, 그 사이에 편집한 매핑 규칙은 덮어씌워질 수 있습니다.
+        </div>
+      </div>
+      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)',
+        display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <Btn kind="secondary" size="sm" onClick={onCancel}>Cancel</Btn>
+        <button onClick={onConfirm} style={{
+          padding: '4px 14px', fontSize: 11.5, fontWeight: 500,
+          border: 'none', borderRadius: 3,
+          background: '#a12929', color: '#fff', cursor: 'pointer',
+        }}>Delete DDL</button>
+      </div>
+    </div>
+  </div>
 );
 
 const PSSchedule = () => (
