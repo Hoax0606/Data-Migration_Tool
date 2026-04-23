@@ -71,6 +71,8 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
         onSelect={setSel}
         updateBinding={updateBinding}
         asisInventory={asisInventory}
+        tobeInventory={tobeInventory}
+        bindingsVersion={bindingsVersion}
       />
     </div>
   );
@@ -127,7 +129,7 @@ const DualInventory = ({ project, hasAsis, hasTobe, asis, tobe, selected, onSele
           available={hasAsis}
           ddl={project?.ddl?.asis}
           tables={visibleAsis}
-          totalCount={asis.length}
+          allTables={asis}
           selected={selected}
           onSelect={onSelect}
         />
@@ -139,7 +141,7 @@ const DualInventory = ({ project, hasAsis, hasTobe, asis, tobe, selected, onSele
           available={hasTobe}
           ddl={project?.ddl?.tobe}
           tables={visibleTobe}
-          totalCount={tobe.length}
+          allTables={tobe}
           selected={selected}
           onSelect={onSelect}
         />
@@ -148,19 +150,29 @@ const DualInventory = ({ project, hasAsis, hasTobe, asis, tobe, selected, onSele
   );
 };
 
-const InventoryTree = ({ label, side, available, ddl, tables, totalCount, selected, onSelect }) => {
+const InventoryTree = ({ label, side, available, ddl, tables, allTables, selected, onSelect }) => {
   const [open, setOpen] = React.useState(true);
   const accent = side === 'asis' ? '#b87219' : 'var(--navy)';
   const accentBg = side === 'asis' ? '#fdf0de' : 'var(--navy-50)';
   const accentBd = side === 'asis' ? '#e4c793' : '#c5d3e4';
-  const routedCount = tables.filter(t => !t.unrouted).length;
+
+  /* Coverage stats — derived from allTables (not the filtered view). */
+  const stats = React.useMemo(() => {
+    const src = allTables || [];
+    const routed = src.filter(t => !t.unrouted).length;
+    const unrouted = src.length - routed;
+    const multi = side === 'asis'
+      ? src.filter(t => t.routing && t.routing.length > 1).length
+      : src.filter(t => t.compositionKind === 'join' || t.compositionKind === 'union').length;
+    return { total: src.length, routed, unrouted, multi };
+  }, [allTables, side]);
 
   return (
     <div>
       <div
         onClick={() => setOpen(o => !o)}
         style={{
-          padding: '4px 12px', cursor: 'pointer',
+          padding: '4px 12px 3px', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 6,
           fontSize: 10, color: 'var(--text-2)',
           textTransform: 'uppercase', letterSpacing: 0.7, fontWeight: 600,
@@ -173,9 +185,39 @@ const InventoryTree = ({ label, side, available, ddl, tables, totalCount, select
         }}>{label}</span>
         <span style={{ flex: 1 }}/>
         <span style={{ color: 'var(--text-4)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-          {available ? `${routedCount}/${totalCount}` : '—'}
+          {available ? `${stats.routed}/${stats.total}` : '—'}
         </span>
       </div>
+
+      {open && available && stats.total > 0 && (
+        <div style={{
+          margin: '0 10px 4px 28px',
+          display: 'flex', flexWrap: 'wrap', gap: 4,
+          fontSize: 9.5, fontFamily: 'var(--mono)',
+          textTransform: 'none', letterSpacing: 0, fontWeight: 400,
+        }}>
+          <span title="routed tables" style={{
+            padding: '0 5px', borderRadius: 2,
+            background: 'var(--green-50)', color: 'var(--green)',
+            border: '1px solid #b7dcc0',
+          }}>{stats.routed} routed</span>
+          {stats.unrouted > 0 && (
+            <span title="tables not bound to anything" style={{
+              padding: '0 5px', borderRadius: 2,
+              background: 'var(--amber-50)', color: 'var(--amber)',
+              border: '1px solid #ebcf8e',
+            }}>{stats.unrouted} unrouted</span>
+          )}
+          {stats.multi > 0 && (
+            <span title={side === 'asis' ? 'AS-IS tables that feed multiple TO-BE tables' : 'TO-BE tables composed from multiple sources'}
+              style={{
+                padding: '0 5px', borderRadius: 2,
+                background: 'var(--navy-50)', color: 'var(--navy)',
+                border: '1px solid #c5d3e4',
+              }}>{stats.multi} {side === 'asis' ? 'multi-target' : 'multi-source'}</span>
+          )}
+        </div>
+      )}
 
       {open && (
         available ? (
@@ -279,7 +321,7 @@ const InventoryItem = ({ side, table, isSelected, onClick }) => {
 
 /* ─── Right: workspace routes by selection ──────────────────────── */
 
-const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory }) => {
+const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion }) => {
   if (!selected) {
     return <GuidePanel hasAsis={hasAsis} hasTobe={hasTobe}/>;
   }
@@ -299,6 +341,10 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
   /* AS-IS side */
   return <AsisTableDetail
     tableName={selected.name}
+    tobeInventory={tobeInventory}
+    updateBinding={updateBinding}
+    bindingsVersion={bindingsVersion}
+    hasTobe={hasTobe}
     onJumpToTobe={(tobe) => onSelect({ side: 'tobe', name: tobe.name, internalName: tobe.internalName })}
   />;
 };
@@ -1166,45 +1212,80 @@ const SamplePreview = ({ active }) => {
 
 /* ─── AS-IS table detail (read-only schema + routing info) ──────── */
 
-const AsisTableDetail = ({ tableName, onJumpToTobe }) => {
-  /* Find AS-IS column info + downstream TO-BE columns each column feeds. */
+const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVersion, hasTobe, onJumpToTobe }) => {
+  /* Columns come from the canonical ASIS_COLUMN_SCHEMA (DDL parse result),
+     independent of bindings. Routing and Maps-to info DO depend on current
+     sd.sources and must re-compute when bindingsVersion bumps. */
+  const columns = (window.ASIS_COLUMN_SCHEMA || {})[tableName] || [];
+
   const info = React.useMemo(() => {
     const diffs = window.SCHEMA_DIFF || [];
     const routing = [];
-    const columnsMap = new Map();
-    const destByColumn = new Map(); // asisColName -> [{tobeTable, tobeCol, kind}]
+    const destByColumn = new Map(); // asisColName -> [{tobeTable, tobeCol, kind, internalName}]
     diffs.forEach(sd => {
-      const sources = sd.sources || [{ table: sd.asis, alias: null, role: 'primary' }];
+      const sources = sd.sources || (sd.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
       const src = sources.find(s => s.table === tableName);
-      if (src) {
-        routing.push({ to: sd.tobe, via: sd.table, role: src.role });
-        const filteredCols = src.alias
-          ? sd.asisCols.filter(c => c.source === src.alias || (typeof c.source === 'string' && c.source.split('+').includes(src.alias)))
-          : sd.asisCols;
-        filteredCols.forEach(c => {
-          if (!columnsMap.has(c.name)) columnsMap.set(c.name, c);
-        });
-        /* Walk tobeCols to find which AS-IS cols they reference */
-        sd.tobeCols.forEach(tc => {
-          if (tc.renameFrom && filteredCols.some(c => c.name === tc.renameFrom)) {
-            const list = destByColumn.get(tc.renameFrom) || [];
-            list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'rename', internalName: sd.table });
-            destByColumn.set(tc.renameFrom, list);
-          }
-          if (tc.mergedFrom) {
-            tc.mergedFrom.forEach(mf => {
-              if (filteredCols.some(c => c.name === mf)) {
-                const list = destByColumn.get(mf) || [];
-                list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'merge', internalName: sd.table });
-                destByColumn.set(mf, list);
-              }
-            });
-          }
-        });
-      }
+      if (!src) return;
+      routing.push({ to: sd.tobe, via: sd.table, role: src.role });
+      sd.tobeCols.forEach(tc => {
+        if (tc.renameFrom && columns.some(c => c.name === tc.renameFrom)) {
+          const list = destByColumn.get(tc.renameFrom) || [];
+          list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'rename', internalName: sd.table });
+          destByColumn.set(tc.renameFrom, list);
+        }
+        if (tc.mergedFrom) {
+          tc.mergedFrom.forEach(mf => {
+            if (columns.some(c => c.name === mf)) {
+              const list = destByColumn.get(mf) || [];
+              list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'merge', internalName: sd.table });
+              destByColumn.set(mf, list);
+            }
+          });
+        }
+      });
     });
-    return { routing, columns: [...columnsMap.values()], destByColumn };
-  }, [tableName]);
+    return { routing, destByColumn };
+  }, [tableName, bindingsVersion, columns]);
+
+  /* Route-to-TO-BE picker — inverse of Add source in CollapsibleBinding.
+     Selecting a TO-BE appends this AS-IS as a source to that TO-BE's binding. */
+  const [routingPickerOpen, setRoutingPickerOpen] = React.useState(false);
+  const pickerRef = React.useRef();
+  React.useEffect(() => {
+    if (!routingPickerOpen) return;
+    const close = (e) => { if (!pickerRef.current?.contains(e.target)) setRoutingPickerOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setRoutingPickerOpen(false); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [routingPickerOpen]);
+
+  const currentRoutedInternals = new Set(info.routing.map(r => r.via));
+  const routableTobe = (tobeInventory || []).filter(t => t.internalName);  // only SCHEMA_DIFF-backed targets can accept bindings
+
+  const routeTo = (tobeItem) => {
+    updateBinding?.(tobeItem.internalName, (srcs) => {
+      const aliases = srcs.map(s => s.alias).filter(Boolean);
+      const newAlias = genAlias(tableName, aliases);
+      if (srcs.length === 0) {
+        return [{ alias: newAlias, table: tableName, role: 'primary' }];
+      }
+      if (srcs.some(s => s.table === tableName)) return srcs; // already bound — no-op
+      const isUnion = srcs[0].role === 'union';
+      const newSrc = isUnion
+        ? { alias: newAlias, table: tableName, role: 'union' }
+        : {
+            alias: newAlias, table: tableName, role: 'join',
+            joinType: 'LEFT JOIN',
+            joinOn: `${srcs[0].alias}.? = ${newAlias}.?`,
+          };
+      return [...srcs, newSrc];
+    });
+    setRoutingPickerOpen(false);
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -1221,7 +1302,67 @@ const AsisTableDetail = ({ tableName, onJumpToTobe }) => {
         }}>AS-IS</span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600 }}>{tableName}</span>
         <div style={{ flex: 1 }}/>
-        <Btn kind="secondary" size="sm" icon={<Ic.plus/>} onClick={() => alert('v1: TO-BE 테이블을 골라 이 AS-IS를 소스로 바인딩하는 피커가 뜹니다.')}>Route to TO-BE…</Btn>
+        <div style={{ position: 'relative' }} ref={pickerRef}>
+          <Btn kind="secondary" size="sm" icon={<Ic.plus/>}
+            disabled={!hasTobe || routableTobe.length === 0}
+            onClick={(e) => { e.stopPropagation(); setRoutingPickerOpen(o => !o); }}>
+            Route to TO-BE…
+          </Btn>
+          {routingPickerOpen && (
+            <div onClick={e => e.stopPropagation()} style={{
+              position: 'absolute', right: 0, top: '100%', marginTop: 4,
+              width: 340, maxHeight: 320, overflow: 'auto',
+              background: 'var(--panel)', border: '1px solid var(--border-strong)',
+              borderRadius: 4, boxShadow: '0 8px 24px rgba(20,30,50,.14)',
+              zIndex: 50, padding: '4px 0',
+            }}>
+              <div style={{ padding: '4px 10px 4px', fontSize: 10, color: 'var(--text-3)',
+                textTransform: 'uppercase', letterSpacing: 0.6, fontFamily: 'var(--mono)' }}>
+                이 AS-IS 를 소스로 추가할 TO-BE 선택
+              </div>
+              {routableTobe.length === 0 && (
+                <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--text-3)' }}>
+                  (바인딩 가능한 TO-BE 테이블이 없음)
+                </div>
+              )}
+              {routableTobe.map(t => {
+                const alreadyBound = currentRoutedInternals.has(t.internalName);
+                return (
+                  <button key={t.name}
+                    onClick={() => !alreadyBound && routeTo(t)}
+                    disabled={alreadyBound}
+                    title={alreadyBound ? '이미 이 AS-IS가 소스로 포함됨' : ''}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                      padding: '5px 10px', border: 'none',
+                      background: 'transparent',
+                      cursor: alreadyBound ? 'not-allowed' : 'pointer',
+                      textAlign: 'left',
+                      fontFamily: 'var(--mono)', fontSize: 11.5,
+                      color: alreadyBound ? 'var(--text-4)' : 'var(--text)',
+                      opacity: alreadyBound ? 0.6 : 1,
+                    }}
+                    onMouseEnter={e => { if (!alreadyBound) e.currentTarget.style.background = 'var(--panel-2)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                    <span style={{ fontSize: 9.5, color: 'var(--text-4)' }}>
+                      {t.compositionKind === 'none' ? 'empty'
+                        : t.compositionKind === 'single' ? '← 1'
+                        : t.compositionKind === 'join' ? `⋈ ${t.sources.length}`
+                        : `∪ ${t.sources.length}`}
+                    </span>
+                    {alreadyBound && <span style={{
+                      fontSize: 9, padding: '0 4px', borderRadius: 2,
+                      background: 'var(--green-50)', color: 'var(--green)',
+                      border: '1px solid #b7dcc0', fontWeight: 600,
+                    }}>bound</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Hint bar */}
@@ -1275,7 +1416,7 @@ const AsisTableDetail = ({ tableName, onJumpToTobe }) => {
 
       {/* Column list */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--panel)' }}>
-        {info.columns.length === 0 ? (
+        {columns.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
             컬럼 정보가 없습니다. DDL 파싱 결과를 확인하세요.
           </div>
@@ -1296,7 +1437,7 @@ const AsisTableDetail = ({ tableName, onJumpToTobe }) => {
               </tr>
             </thead>
             <tbody>
-              {info.columns.map((c, i) => {
+              {columns.map((c, i) => {
                 const dests = info.destByColumn.get(c.name) || [];
                 return (
                   <tr key={c.name} style={{
