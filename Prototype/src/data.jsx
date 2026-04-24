@@ -395,6 +395,57 @@ const SCHEMA_DIFF = [
    entry. Hand-authored MAPPING (for ACCT_MASTER) is kept as-is and used
    preferentially; every other table is synthesized. */
 
+/* Per-table, per-column manual overrides. Keyed by SCHEMA_DIFF .table name
+   then by TO-BE column name. Populated via updateColumnOverride() when the
+   user edits a mapping rule in the Inspector. Empty by default → all
+   mappings come from auto-synthesis. */
+const COLUMN_OVERRIDES = {};
+const getColumnOverrides    = (internalName) => (COLUMN_OVERRIDES[internalName] || {});
+const updateColumnOverride  = (internalName, colName, override) => {
+  if (!COLUMN_OVERRIDES[internalName]) COLUMN_OVERRIDES[internalName] = {};
+  if (override === null || override === undefined) {
+    delete COLUMN_OVERRIDES[internalName][colName];
+  } else {
+    COLUMN_OVERRIDES[internalName][colName] = override;
+  }
+};
+
+/* Build a column-mapping row from a user override. Handles 5 rule types:
+   rename · transform · constant · drop · (future) merge. Missing source
+   in current bindings → row marked status='err' so user notices. */
+const rowFromOverride = (tc, ov, asisByName) => {
+  const base = { tgt: tc.name, tgtType: tc.type, pk: !!tc.pk, overridden: true };
+  switch (ov.rule) {
+    case 'drop':
+      return { ...base, src: '—', srcType: '—',
+        rule: 'skip', status: 'skip',
+        note: ov.note || 'manually excluded', sourceAlias: null };
+    case 'constant':
+      return { ...base, src: ov.constantValue || 'NULL', srcType: 'literal',
+        rule: 'added', status: 'ok',
+        note: ov.note || `constant = ${ov.constantValue ?? 'NULL'}`, sourceAlias: null };
+    case 'rename':
+    case 'transform': {
+      const ac = asisByName[ov.sourceColumn];
+      if (!ac) {
+        return { ...base, src: ov.sourceColumn || '?', srcType: '?',
+          rule: 'rule', status: 'err',
+          note: `override source '${ov.sourceColumn}' not found in current bindings — re-bind or reset`,
+          sourceAlias: ov.sourceAlias || null };
+      }
+      return { ...base, src: ac.name, srcType: ac.type,
+        rule: ov.rule === 'transform' ? 'rule' : 'auto',
+        status: 'ok',
+        note: ov.note || (ov.rule === 'transform' ? ov.transformExpr : ''),
+        sourceAlias: ac.source || ov.sourceAlias || null,
+        transformExpr: ov.transformExpr };
+    }
+    default:
+      return { ...base, src: '?', srcType: '?', rule: 'rule', status: 'err',
+        note: `unknown override rule: ${ov.rule}`, sourceAlias: null };
+  }
+};
+
 const mappingsFromSchemaDiff = (t) => {
   const rows = [];
   /* Use dynamic asisCols derived from the current sources binding, so the
@@ -402,8 +453,17 @@ const mappingsFromSchemaDiff = (t) => {
   const asisCols = effectiveAsisCols(t);
   const asisByName = Object.fromEntries(asisCols.map(c => [c.name, c]));
   const referenced = new Set();
+  const overrides = getColumnOverrides(t.table);
 
   t.tobeCols.forEach(tc => {
+    /* Manual override takes precedence over everything (added / renameFrom / direct). */
+    const ov = overrides[tc.name];
+    if (ov) {
+      rows.push(rowFromOverride(tc, ov, asisByName));
+      if (ov.sourceColumn) referenced.add(ov.sourceColumn);
+      if (Array.isArray(ov.sourceColumns)) ov.sourceColumns.forEach(n => referenced.add(n));
+      return;
+    }
     if (tc.added) {
       const mergedSrc = tc.mergedFrom ? tc.mergedFrom.join(' + ') : '—';
       /* Check merged-from columns exist in current sources. If not, fall
@@ -1272,4 +1332,5 @@ Object.assign(window, {
   getSnapshots, getAuditLog, getLatestApproved,
   NOTIFICATION_EVENTS, NOTIFICATIONS_SEED, getNotifications, getUnreadCount,
   PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun, getPhaseLabel, getPhaseDesc,
+  COLUMN_OVERRIDES, getColumnOverrides, updateColumnOverride,
 });

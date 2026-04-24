@@ -19,6 +19,13 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
      via updateBinding. Every inventory/detail memo re-runs so the sidebar
      badges, CollapsibleBinding, and source-alias tags stay in sync. */
   const [bindingsVersion, setBindingsVersion] = React.useState(0);
+  /* overridesVersion bumps when the user edits a manual column override. */
+  const [overridesVersion, setOverridesVersion] = React.useState(0);
+
+  const updateOverride = React.useCallback((internalName, colName, override) => {
+    window.updateColumnOverride?.(internalName, colName, override);
+    setOverridesVersion(v => v + 1);
+  }, []);
 
   const asisInventory = React.useMemo(() => hasAsis ? window.getAsisInventory() : [], [hasAsis, bindingsVersion]);
   const tobeInventory = React.useMemo(() => hasTobe ? window.getTobeInventory() : [], [hasTobe, bindingsVersion]);
@@ -73,6 +80,8 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
         asisInventory={asisInventory}
         tobeInventory={tobeInventory}
         bindingsVersion={bindingsVersion}
+        updateOverride={updateOverride}
+        /* overridesVersion state in parent triggers re-render cascade — no prop needed */
       />
     </div>
   );
@@ -321,7 +330,7 @@ const InventoryItem = ({ side, table, isSelected, onClick }) => {
 
 /* ─── Right: workspace routes by selection ──────────────────────── */
 
-const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion }) => {
+const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion, updateOverride }) => {
   if (!selected) {
     return <GuidePanel hasAsis={hasAsis} hasTobe={hasTobe}/>;
   }
@@ -336,6 +345,7 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
       hasAsis={hasAsis}
       updateBinding={updateBinding}
       asisInventory={asisInventory}
+      updateOverride={updateOverride}
     />;
   }
   /* AS-IS side */
@@ -356,7 +366,7 @@ const resolveMapping = (selected) => {
 
 /* ─── TO-BE detail — existing column mapping grid + collapsible binding ── */
 
-const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory }) => {
+const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory, updateOverride }) => {
   const [q, setQ] = React.useState('');
   const [ruleFilter, setRuleFilter] = React.useState('all');
   const [activeIdx, setActiveIdx] = React.useState(0);
@@ -539,7 +549,17 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
                       {r.tgt}
                     </td>
                     <td style={{ padding: '5px 10px' }}>{r.tgtType === '—' ? <span style={{ color: 'var(--text-4)', fontFamily: 'var(--mono)' }}>—</span> : <TypeBadge>{r.tgtType}</TypeBadge>}</td>
-                    <td style={{ padding: '5px 10px' }}><RuleTag rule={r.rule}/></td>
+                    <td style={{ padding: '5px 10px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <RuleTag rule={r.rule}/>
+                        {r.overridden && (
+                          <span title="manually edited · open Inspector to Reset to auto" style={{
+                            fontSize: 11, color: 'var(--amber)', cursor: 'help',
+                            fontWeight: 700, lineHeight: 1,
+                          }}>✎</span>
+                        )}
+                      </span>
+                    </td>
                     <td style={{ padding: '5px 10px' }}>
                       {r.status === 'ok'   && <StatusBadge tone="ok">ok</StatusBadge>}
                       {r.status === 'warn' && <StatusBadge tone="warn">warn</StatusBadge>}
@@ -561,7 +581,10 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
         </div>
 
         {inspectorOpen
-          ? <Inspector active={active} composition={composition} onClose={() => setInspectorOpen(false)}/>
+          ? <Inspector active={active} composition={composition} onClose={() => setInspectorOpen(false)}
+              asisColPool={window.effectiveAsisCols ? window.effectiveAsisCols(schema) : []}
+              onSaveOverride={(override) => updateOverride?.(tableName, active?.tgt, override)}
+              onResetOverride={() => updateOverride?.(tableName, active?.tgt, null)}/>
           : <InspectorRail onOpen={() => setInspectorOpen(true)}/>}
       </div>
     </div>
@@ -1037,8 +1060,12 @@ const SourceAliasTag = ({ alias, composition }) => {
 
 /* ─── Inspector (unchanged from v1 save for sample preview wiring) ── */
 
-const Inspector = ({ active, composition, onClose }) => {
+const Inspector = ({ active, composition, onClose, asisColPool, onSaveOverride, onResetOverride }) => {
+  const [editing, setEditing] = React.useState(false);
+  /* Reset edit mode when the active row changes. */
+  React.useEffect(() => { setEditing(false); }, [active?.tgt]);
   if (!active) return null;
+
   return (
     <aside style={{
       width: 340, minWidth: 340,
@@ -1057,7 +1084,18 @@ const Inspector = ({ active, composition, onClose }) => {
           onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
         ><Ic.x/></button>
-        <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Mapping detail</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Mapping detail</span>
+          {active.overridden && (
+            <span title="manually edited" style={{
+              padding: '0 5px', fontSize: 9, fontWeight: 700,
+              background: 'var(--amber-50)', color: 'var(--amber)',
+              border: '1px solid var(--amber)', borderRadius: 2,
+              textTransform: 'none', letterSpacing: 0.3,
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}>✎ manual</span>
+          )}
+        </div>
         <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 600 }}>{active.src}</div>
         <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>→ {active.tgt}</div>
       </div>
@@ -1070,32 +1108,215 @@ const Inspector = ({ active, composition, onClose }) => {
         <Row k="Primary key">{active.pk ? <StatusBadge tone="info">yes</StatusBadge> : <span style={{ color: 'var(--text-4)' }}>—</span>}</Row>
       </div>
 
-      <ProfileMiniCard active={active} composition={composition}/>
-
-      <TransformPanel active={active}/>
-
-      {active.note && (
-        <div style={{
-          margin: '10px 14px 0', padding: 10,
-          background: active.status === 'err' ? 'var(--red-50)' : active.status === 'warn' ? 'var(--amber-50)' : 'var(--gray-50)',
-          border: `1px solid ${active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--border)'}`,
-          borderRadius: 4, fontSize: 11.5,
-          color: active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--text-2)',
-          fontFamily: 'var(--mono)', lineHeight: 1.5,
-        }}>
-          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, opacity: 0.7, marginBottom: 4 }}>Note</div>
-          {active.note}
-        </div>
+      {editing ? (
+        <RuleEditor
+          active={active}
+          asisColPool={asisColPool || []}
+          composition={composition}
+          onSave={(override) => { onSaveOverride?.(override); setEditing(false); }}
+          onReset={() => { onResetOverride?.(); setEditing(false); }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <>
+          <ProfileMiniCard active={active} composition={composition}/>
+          <TransformPanel active={active}/>
+          {active.note && (
+            <div style={{
+              margin: '10px 14px 0', padding: 10,
+              background: active.status === 'err' ? 'var(--red-50)' : active.status === 'warn' ? 'var(--amber-50)' : 'var(--gray-50)',
+              border: `1px solid ${active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--border)'}`,
+              borderRadius: 4, fontSize: 11.5,
+              color: active.status === 'err' ? 'var(--red)' : active.status === 'warn' ? 'var(--amber)' : 'var(--text-2)',
+              fontFamily: 'var(--mono)', lineHeight: 1.5,
+            }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, opacity: 0.7, marginBottom: 4 }}>Note</div>
+              {active.note}
+            </div>
+          )}
+          <SamplePreview active={active}/>
+        </>
       )}
 
-      <SamplePreview active={active}/>
-
       <div style={{ padding: '14px', marginTop: 'auto', borderTop: '1px solid var(--border)', display: 'flex', gap: 6 }}>
-        <Btn kind="secondary" size="sm">Edit rule</Btn>
+        {!editing && (
+          <Btn kind="secondary" size="sm" onClick={() => setEditing(true)}>Edit rule</Btn>
+        )}
+        {!editing && active.overridden && (
+          <Btn kind="ghost" size="sm" onClick={onResetOverride} title="원래 자동 합성 규칙으로 되돌립니다">Reset to auto</Btn>
+        )}
         <div style={{ flex: 1 }}/>
         <Btn kind="ghost" size="sm" icon={<Ic.ext/>}>Docs</Btn>
       </div>
     </aside>
+  );
+};
+
+/* ─── RuleEditor ──────────────────────────────────────────────────
+   Manual column-mapping override editor. 5 rule types for Phase 1:
+   rename · transform · constant · drop · auto(reset). Multi-source merge
+   is Phase 2. Editor loads initial state from current row — if the row was
+   already overridden, from the override; otherwise from the auto-synthesized
+   row so the user sees current values before changing. */
+
+const RULE_OPTIONS = [
+  { k: 'rename',    l: 'Rename',    desc: '소스 컬럼만 다시 지정' },
+  { k: 'transform', l: 'Transform', desc: '소스 + SQL 변환식' },
+  { k: 'constant',  l: 'Constant',  desc: '고정 값 (AS-IS 소스 없음)' },
+  { k: 'drop',      l: 'Drop',      desc: '이행 대상에서 제외' },
+];
+
+const RuleEditor = ({ active, asisColPool, composition, onSave, onReset, onCancel }) => {
+  /* Seed editor state from the active row. Map the row's current `rule`
+     back onto our editor rule enum: auto→rename, rule→transform, skip→drop,
+     added+literal srcType→constant. */
+  const seedRule = active.overridden
+    ? (active.rule === 'skip' ? 'drop' : active.srcType === 'literal' ? 'constant' : active.rule === 'rule' ? 'transform' : 'rename')
+    : (active.rule === 'skip' ? 'drop' : active.rule === 'added' ? 'constant' : active.rule === 'rule' ? 'transform' : 'rename');
+  const [ruleType, setRuleType] = React.useState(seedRule);
+  const [sourceColumn, setSourceColumn] = React.useState(active.src && active.src !== '—' && !/\s|\+/.test(active.src) ? active.src : (asisColPool[0]?.name || ''));
+  const [transformExpr, setTransformExpr] = React.useState(
+    active.overridden && active.transformExpr ? active.transformExpr
+    : active.srcType?.includes('YYYYMMDD') ? `TO_DATE(${sourceColumn || 'src'}, 'YYYYMMDD')`
+    : active.srcType?.includes('COMP-3') ? `unpack_comp3(${sourceColumn || 'src'})`
+    : ''
+  );
+  const [constantValue, setConstantValue] = React.useState(
+    active.srcType === 'literal' ? active.src
+    : active.rule === 'added' && active.note?.startsWith('default = ') ? active.note.slice('default = '.length)
+    : "'TODO'"
+  );
+  const [note, setNote] = React.useState(active.overridden ? (active.note || '') : '');
+
+  const handleSave = () => {
+    const base = { rule: ruleType, note, editedAt: new Date().toISOString().slice(0, 16).replace('T', ' '), editedBy: 'Admin' };
+    const override =
+      ruleType === 'drop'     ? { ...base }
+    : ruleType === 'constant' ? { ...base, constantValue }
+    : ruleType === 'rename'   ? { ...base, sourceColumn, sourceAlias: (asisColPool.find(c => c.name === sourceColumn)?.source) || null }
+    : /* transform */           { ...base, sourceColumn, sourceAlias: (asisColPool.find(c => c.name === sourceColumn)?.source) || null, transformExpr };
+    onSave(override);
+  };
+
+  return (
+    <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)' }}>
+      <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+        Edit mapping rule
+      </div>
+
+      {/* Rule type selector */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Rule type</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+          {RULE_OPTIONS.map(opt => {
+            const active_ = ruleType === opt.k;
+            return (
+              <button key={opt.k} onClick={() => setRuleType(opt.k)}
+                title={opt.desc}
+                style={{
+                  padding: '4px 8px', textAlign: 'left',
+                  border: `1px solid ${active_ ? 'var(--navy)' : 'var(--border)'}`,
+                  background: active_ ? 'var(--navy-50)' : 'var(--panel)',
+                  color: active_ ? 'var(--navy)' : 'var(--text-2)',
+                  fontWeight: active_ ? 600 : 500,
+                  fontSize: 11, borderRadius: 3, cursor: 'pointer',
+                }}>
+                <div>{active_ ? '⦿ ' : '○ '}{opt.l}</div>
+                <div style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1, fontWeight: 400 }}>{opt.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Type-specific inputs */}
+      {(ruleType === 'rename' || ruleType === 'transform') && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Source column</div>
+          <select value={sourceColumn} onChange={e => setSourceColumn(e.target.value)}
+            style={{
+              width: '100%', height: 26, padding: '0 8px',
+              border: '1px solid var(--border)', borderRadius: 3,
+              background: 'var(--panel)', fontFamily: 'var(--mono)',
+              fontSize: 11.5, color: 'var(--text)',
+            }}>
+            {asisColPool.length === 0 && <option value="">(no AS-IS columns available)</option>}
+            {asisColPool.map(c => (
+              <option key={c.name + (c.source || '')} value={c.name}>
+                {c.source ? `${c.source}.${c.name}` : c.name} · {c.type}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {ruleType === 'transform' && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Transform expression</div>
+          <textarea value={transformExpr} onChange={e => setTransformExpr(e.target.value)}
+            placeholder="UPPER(TRIM(src))"
+            style={{
+              width: '100%', minHeight: 48, padding: '6px 8px',
+              border: '1px solid var(--border)', borderRadius: 3,
+              background: '#0e1a2b', color: '#cad7e8',
+              fontFamily: 'var(--mono)', fontSize: 11.5,
+              resize: 'vertical',
+            }}/>
+          <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginTop: 3, fontFamily: 'var(--mono)' }}>
+            `src` 를 소스 컬럼 참조자로 쓸 수 있습니다 (`{sourceColumn}` 으로 대체됨)
+          </div>
+        </div>
+      )}
+
+      {ruleType === 'constant' && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Constant value</div>
+          <input value={constantValue} onChange={e => setConstantValue(e.target.value)}
+            placeholder="'INTERNAL' or NOW() or 0"
+            style={{
+              width: '100%', height: 26, padding: '0 8px',
+              border: '1px solid var(--border)', borderRadius: 3,
+              background: 'var(--panel)', fontFamily: 'var(--mono)',
+              fontSize: 11.5, color: 'var(--text)',
+            }}/>
+          <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginTop: 3, fontFamily: 'var(--mono)' }}>
+            문자열 값은 따옴표 포함 (예: `'ACTIVE'`), 함수/숫자는 그대로
+          </div>
+        </div>
+      )}
+
+      {ruleType === 'drop' && (
+        <div style={{
+          padding: 8, marginBottom: 8,
+          background: 'var(--red-50)', border: '1px solid var(--red)', borderRadius: 3,
+          fontSize: 11, color: 'var(--red)', lineHeight: 1.5,
+        }}>
+          이 TO-BE 컬럼은 이행 대상에서 제외됩니다. TO-BE 스키마에 NOT NULL 이면 런타임에서 실패할 수 있으니 주의.
+        </div>
+      )}
+
+      {/* Note */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Note (optional)</div>
+        <input value={note} onChange={e => setNote(e.target.value)}
+          placeholder="왜 이렇게 바꿨는지"
+          style={{
+            width: '100%', height: 26, padding: '0 8px',
+            border: '1px solid var(--border)', borderRadius: 3,
+            background: 'var(--panel)', fontSize: 11.5, color: 'var(--text)',
+          }}/>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <Btn kind="primary" size="sm" icon={<Ic.check/>} onClick={handleSave}>Save</Btn>
+        <Btn kind="secondary" size="sm" onClick={onCancel}>Cancel</Btn>
+        <div style={{ flex: 1 }}/>
+        {active.overridden && (
+          <Btn kind="ghost" size="sm" onClick={onReset}>Reset to auto</Btn>
+        )}
+      </div>
+    </div>
   );
 };
 
