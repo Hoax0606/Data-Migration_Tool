@@ -22,31 +22,55 @@ const connMeta = (status, opts = {}) => ({
   },
 });
 
+/* Project lifecycle phase — reflects the 6-phase real-world migration flow.
+   planning → analysis → rehearsal → sign-off → cutover → hypercare → done
+   The legacy `status` field (running/waiting/done) is kept for backwards
+   compat (dashboard stats etc.) but phase is the new source of truth. */
+const PHASES = [
+  { k: 'planning',  l: 'Planning',   desc: '킥오프 · 담당자 배정 · 계정 확보' },
+  { k: 'analysis',  l: 'Analysis',   desc: 'DDL import · 매핑 설계' },
+  { k: 'rehearsal', l: 'Rehearsal',  desc: '시험이행 반복 · 이슈 수렴' },
+  { k: 'sign-off',  l: 'Sign-off',   desc: '최종 매핑 승인 · 컷오버 준비' },
+  { k: 'cutover',   l: 'Cutover',    desc: 'D-day 실제 이행' },
+  { k: 'hypercare', l: 'Hypercare',  desc: '컷오버 후 안정화 · rollback 감시' },
+  { k: 'done',      l: 'Done',       desc: '프로젝트 종료' },
+];
+
+const cutoverMeta = (dday, freezeHours, rollbackSla) => ({ dday, freezeHours, rollbackSla });
+
 const PROJECTS = [
-  { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
+  { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', phase: 'rehearsal', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
     ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) },
-    connections: { asis: connMeta('ok', { latencyMs: 42, detectedTables: 142 }), tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) } },
-  { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
+    connections: { asis: connMeta('ok', { latencyMs: 42, detectedTables: 142 }), tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) },
+    cutover: cutoverMeta('2026-05-03 22:00 KST', 24, 15) },
+  { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', phase: 'rehearsal', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
     ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) },
-    connections: { asis: connMeta('ok', { latencyMs: 31, detectedTables: 87 }), tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) } },
-  { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
+    connections: { asis: connMeta('ok', { latencyMs: 31, detectedTables: 87 }), tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) },
+    cutover: cutoverMeta('2026-05-17 22:00 KST', 24, 20) },
+  { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
     ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null },
-    connections: { asis: connMeta('stale', { latencyMs: 78, detectedTables: 34 }), tobe: connMeta('untested') } },
-  { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
+    connections: { asis: connMeta('stale', { latencyMs: 78, detectedTables: 34 }), tobe: connMeta('untested') },
+    cutover: cutoverMeta('2026-06-14 20:00 KST', 12, 30) },
+  { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', phase: 'analysis',  src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
     ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) },
-    connections: { asis: connMeta('untested'), tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) } },
-  { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
+    connections: { asis: connMeta('untested'), tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) },
+    cutover: cutoverMeta('2026-06-28 22:00 KST', 24, 30) },
+  { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    phase: 'hypercare', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
     ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) },
-    connections: { asis: connMeta('ok', { latencyMs: 38, detectedTables: 28 }), tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) } },
-  { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
+    connections: { asis: connMeta('ok', { latencyMs: 38, detectedTables: 28 }), tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) },
+    cutover: cutoverMeta('2026-03-14 22:00 KST', 24, 15) },
+  { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    phase: 'done',      src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
     ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) },
-    connections: { asis: connMeta('ok', { latencyMs: 27, detectedTables: 113 }), tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) } },
-  { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
+    connections: { asis: connMeta('ok', { latencyMs: 27, detectedTables: 113 }), tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) },
+    cutover: cutoverMeta('2026-02-28 20:00 KST', 18, 20) },
+  { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    phase: 'done',      src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
     ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) },
-    connections: { asis: connMeta('ok', { latencyMs: 55, detectedTables: 19 }), tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) } },
-  { id: 'p8', name: 'Remittance Hub',        client: TENANT, tables: 0,   status: 'waiting', src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
+    connections: { asis: connMeta('ok', { latencyMs: 55, detectedTables: 19 }), tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) },
+    cutover: cutoverMeta('2026-02-02 22:00 KST', 12, 20) },
+  { id: 'p8', name: 'Remittance Hub',        client: TENANT, tables: 0,   status: 'waiting', phase: 'planning',  src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
     ddl: { asis: null, tobe: null },
-    connections: { asis: connMeta('untested'), tobe: connMeta('untested') } },
+    connections: { asis: connMeta('untested'), tobe: connMeta('untested') },
+    cutover: cutoverMeta('TBD', 24, 30) },
 ];
 
 /* Dashboard tables */
@@ -804,6 +828,438 @@ const mockTableSamples = (tableName, count = 10) => {
   return rows;
 };
 
+/* ─── Pre-flight checks ───────────────────────────────────────────
+   Evaluate every gating condition that must be satisfied before a run can
+   be launched. Real tool would run each rule against a connected DB; here
+   we derive them from in-memory project state, SCHEMA_DIFF and the
+   inventories. Three severities: pass / warn / fail — any fail blocks Run. */
+
+const getPreflightChecks = (project) => {
+  const checks = [];
+  const conn = project?.connections || {};
+  const ddl = project?.ddl || {};
+
+  const mkConnCheck = (side, label) => {
+    const c = conn[side];
+    const s = c?.status;
+    const status = s === 'ok' ? 'pass' : s === 'stale' ? 'warn' : 'fail';
+    const detail = s === 'ok' ? `latency ${c.latencyMs}ms · detected ${c.detectedTables ?? '—'} tables`
+      : s === 'stale' ? `last tested ${c.lastTestedAt} — re-test recommended`
+      : s === 'failed' ? (c.error || 'Connection failed')
+      : s === 'testing' ? 'currently testing…'
+      : 'Not tested yet';
+    return { id: `conn-${side}`, title: `${label} 접속 확인`, status, detail, fix: { tab: 'settings', section: side === 'asis' ? 'source' : 'target' } };
+  };
+  checks.push(mkConnCheck('asis', 'AS-IS'));
+  checks.push(mkConnCheck('tobe', 'TO-BE'));
+
+  const mkDdlCheck = (side, label) => ({
+    id: `ddl-${side}`, title: `${label} DDL import`,
+    status: ddl[side] ? 'pass' : 'fail',
+    detail: ddl[side] ? `${ddl[side].tables} tables · ${ddl[side].columns} columns (${ddl[side].filename})` : 'DDL not imported',
+    fix: { tab: 'settings', section: side === 'asis' ? 'source' : 'target' },
+  });
+  checks.push(mkDdlCheck('asis', 'AS-IS'));
+  checks.push(mkDdlCheck('tobe', 'TO-BE'));
+
+  /* Mapping coverage — only evaluable when both DDLs are present */
+  const bothDdl = ddl.asis && ddl.tobe;
+  const tobeInv = bothDdl ? (getTobeInventory() || []) : [];
+  const asisInv = bothDdl ? (getAsisInventory() || []) : [];
+
+  const unroutedTobe = tobeInv.filter(t => t.unrouted);
+  checks.push({
+    id: 'tobe-bindings', title: '모든 TO-BE 테이블 소스 바인딩',
+    status: !bothDdl ? 'skip' : unroutedTobe.length === 0 ? 'pass' : unroutedTobe.length <= 2 ? 'warn' : 'fail',
+    detail: !bothDdl ? 'DDL 두 쪽 모두 import 후 검증됩니다'
+      : unroutedTobe.length === 0 ? `${tobeInv.length} tables all routed`
+      : `${unroutedTobe.length} unrouted: ${unroutedTobe.slice(0, 4).map(t => t.tableShort).join(', ')}${unroutedTobe.length > 4 ? ' …' : ''}`,
+    fix: { tab: 'mapping' },
+  });
+
+  const unroutedAsis = asisInv.filter(t => t.unrouted);
+  checks.push({
+    id: 'asis-orphans', title: 'AS-IS 고아 테이블 점검',
+    status: !bothDdl ? 'skip' : unroutedAsis.length === 0 ? 'pass' : 'warn',
+    detail: !bothDdl ? 'DDL 두 쪽 모두 import 후 검증됩니다'
+      : unroutedAsis.length === 0 ? 'all AS-IS tables routed'
+      : `${unroutedAsis.length} unrouted (의도적 제외 확인 필요): ${unroutedAsis.map(t => t.tableShort).join(', ')}`,
+    fix: { tab: 'mapping' },
+  });
+
+  /* NOT-NULL added columns with NULL defaults — blocks insert */
+  const violations = [];
+  (SCHEMA_DIFF || []).forEach(sd => {
+    sd.tobeCols.forEach(tc => {
+      if (tc.added && tc.nullable === false && (!tc.default || tc.default === 'NULL')) {
+        violations.push(`${sd.tobe}.${tc.name}`);
+      }
+    });
+  });
+  checks.push({
+    id: 'added-not-null', title: 'NOT NULL 신규 컬럼 default 지정',
+    status: violations.length === 0 ? 'pass' : 'fail',
+    detail: violations.length === 0
+      ? 'all new NOT NULL columns have non-NULL defaults'
+      : `${violations.length} violation: ${violations.slice(0, 3).join(', ')}${violations.length > 3 ? ' …' : ''}`,
+    fix: { tab: 'mapping' },
+  });
+
+  /* Low-confidence renames — warning */
+  const lowConf = [];
+  (SCHEMA_DIFF || []).forEach(sd => {
+    sd.tobeCols.forEach(tc => {
+      if (tc.renameFrom && (tc.renameConfidence ?? 1) < 0.70) {
+        lowConf.push(`${sd.tobe}.${tc.name} ← ${tc.renameFrom} (${Math.round((tc.renameConfidence ?? 1) * 100)}%)`);
+      }
+    });
+  });
+  checks.push({
+    id: 'low-confidence', title: '낮은 신뢰도 rename 검토',
+    status: lowConf.length === 0 ? 'pass' : 'warn',
+    detail: lowConf.length === 0 ? 'all renames above 70% confidence'
+      : `${lowConf.length} field(s) need review: ${lowConf.slice(0, 2).join(' · ')}${lowConf.length > 2 ? ' …' : ''}`,
+    fix: { tab: 'mapping' },
+  });
+
+  /* Primary key coverage */
+  const pkMissing = [];
+  (SCHEMA_DIFF || []).forEach(sd => {
+    const hasPk = sd.tobeCols.some(c => c.pk);
+    if (!hasPk) pkMissing.push(sd.tobe);
+  });
+  checks.push({
+    id: 'pk-presence', title: 'Primary key 존재',
+    status: pkMissing.length === 0 ? 'pass' : 'warn',
+    detail: pkMissing.length === 0 ? 'all tables have PK'
+      : `no PK: ${pkMissing.slice(0, 3).join(', ')}${pkMissing.length > 3 ? ' …' : ''}`,
+    fix: { tab: 'mapping' },
+  });
+
+  /* Approved snapshot — runs must be executed off an approved version. */
+  const snaps = (MAPPING_SNAPSHOTS_BY_PROJECT || {})[project?.id] || [];
+  const approved = [...snaps].reverse().find(s => s.status === 'approved');
+  const pending  = snaps.filter(s => s.status === 'pending').length;
+  checks.push({
+    id: 'approved-snapshot', title: '승인된 매핑 스냅샷',
+    status: approved ? 'pass' : snaps.length > 0 ? 'warn' : 'fail',
+    detail: approved ? `v${approved.version} approved by ${approved.approvedBy}${pending ? ` · ${pending} pending review` : ''}`
+      : snaps.length > 0 ? `${snaps.length} snapshot(s) but none approved yet — ${pending} pending`
+      : 'No snapshot created — create and get approval before running',
+    fix: { tab: 'versions' },
+  });
+
+  return checks;
+};
+
+/* ─── Quarantine mock entries ─────────────────────────────────────
+   Rows that the pipeline rejected, grouped by reason. Real tool would read
+   from a quarantine table/queue populated during run. */
+
+const QUARANTINE_ENTRIES = [
+  {
+    id: 'q-001', stage: 'validate.fk', severity: 'error',
+    reason: 'FK violation — child key not found in parent',
+    detail: 'GL_ENTRY.acct_no → ACCT_MASTER.account_no',
+    table: 'GL_ENTRY', count: 4, firstSeenAt: '09:41:06.998',
+    sampleRows: [
+      { TXN_ID: 'T20240315001', ACCT_NO: 'AC00881104', AMT: 1250.00 },
+      { TXN_ID: 'T20240315002', ACCT_NO: 'AC00881105', AMT: 88200.00 },
+      { TXN_ID: 'T20240315003', ACCT_NO: 'AC00881106', AMT: 450.00 },
+      { TXN_ID: 'T20240315004', ACCT_NO: 'AC00881107', AMT: 12540.50 },
+    ],
+  },
+  {
+    id: 'q-002', stage: 'encode', severity: 'error',
+    reason: 'invalid EBCDIC byte — codepoint not in IBM-939',
+    detail: 'KYC_DOCUMENT · offset 0x1A08B2C · byte 0x3F',
+    table: 'KYC_DOCUMENT', count: 1, firstSeenAt: '09:41:05.441',
+    sampleRows: [
+      { DOC_ID: 'KYC2025034481', CUST_ID: 'C00211334', NAME_KANJI: '<invalid>' },
+    ],
+  },
+  {
+    id: 'q-003', stage: 'loader.copy', severity: 'error',
+    reason: 'Duplicate primary key — ACCT_MASTER.account_no',
+    detail: 'Uniqueness violation on target insert',
+    table: 'ACCT_MASTER', count: 3, firstSeenAt: '09:41:02.551',
+    sampleRows: [
+      { ACCT_NO: 'AC10023441', CUST_ID: 'C000124551', BAL_AMT: 1820000 },
+      { ACCT_NO: 'AC10023442', CUST_ID: 'C000124551', BAL_AMT: 0 },
+      { ACCT_NO: 'AC10023443', CUST_ID: 'C000124562', BAL_AMT: 88200 },
+    ],
+  },
+  {
+    id: 'q-004', stage: 'transform', severity: 'warning',
+    reason: 'COMP-3 sign nibble unexpected (0xF) — coerced to positive',
+    detail: 'col=BAL_AMT · 23 rows auto-corrected · no data loss',
+    table: 'TXN_JOURNAL_2024', count: 23, firstSeenAt: '09:41:06.114',
+    sampleRows: [
+      { TXN_ID: 'T20240318991', BAL_AMT: 218800 },
+      { TXN_ID: 'T20240318992', BAL_AMT: 54200 },
+    ],
+  },
+  {
+    id: 'q-005', stage: 'transform', severity: 'warning',
+    reason: 'Kanji codepoint outside JIS X 0208 → replaced with U+FFFD',
+    detail: 'account_name · rare-use kanji in legacy records',
+    table: 'ACCT_MASTER', count: 2, firstSeenAt: '09:41:04.331',
+    sampleRows: [
+      { ACCT_NO: 'AC00455112', ACCT_NAME_KANJI: '�田花子' },
+      { ACCT_NO: 'AC00622045', ACCT_NAME_KANJI: '吉�太郎' },
+    ],
+  },
+  {
+    id: 'q-006', stage: 'validate.pk', severity: 'warning',
+    reason: 'PK duplicate soft-dedupe applied',
+    detail: 'CUST_CONTACT · 3 rows merged by latest UPD_TS',
+    table: 'CUST_CONTACT', count: 3, firstSeenAt: '09:41:01.881',
+    sampleRows: [
+      { CUST_ID: 'C000100234', TEL_NO: '0312345678', UPD_TS: '20260412103021' },
+    ],
+  },
+];
+
+/* ─── Mapping snapshots / versions ───────────────────────────────
+   Real tool stores each snapshot's full mapping state. Mock per project. */
+
+const MAPPING_SNAPSHOTS_BY_PROJECT = {
+  p1: [
+    { id: 'p1-v1.0', version: '1.0', createdAt: '2026-04-02 10:30', author: 'Admin',
+      notes: 'Initial mapping spec from DDL parse', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-03 14:20',
+      changes: [], /* initial — no prior version */ },
+    { id: 'p1-v1.1', version: '1.1', createdAt: '2026-04-10 16:45', author: 'Admin',
+      notes: 'Added tenant_id default, fixed kanji encoding rules', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-11 09:15',
+      changes: [
+        { kind: 'added',    target: 'public.account.tenant_id', detail: 'default = gen_random_uuid()' },
+        { kind: 'modified', target: 'public.account.account_name', detail: 'iconv rule: ebcdic-kana → utf-8 + NFKC normalize' },
+        { kind: 'modified', target: 'public.customer.name_kanji', detail: 'Added ensure_cp(JIS X 0208) guard' },
+        { kind: 'modified', target: 'public.customer.name_kana', detail: 'Added ensure_cp(JIS X 0208) guard' },
+        { kind: 'added',    target: 'public.account.data_classification', detail: 'default = pending_review' },
+        { kind: 'modified', target: 'public.transaction_2024.occurred_at', detail: 'Merged TXN_DT + TXN_TM into TIMESTAMP' },
+        { kind: 'removed',  target: 'public.account.legacy_officer_code', detail: 'dropped — unused' },
+      ] },
+    { id: 'p1-v1.2', version: '1.2', createdAt: '2026-04-21 11:20', author: 'Admin',
+      notes: 'Split customer into customer + customer_contact, unified transaction tables', status: 'pending',
+      reviewer: 'Reviewer',
+      changes: [
+        { kind: 'added',    target: 'public.transaction_all', detail: 'New UNION target (t23 ∪ t24)' },
+        { kind: 'modified', target: 'public.customer bindings', detail: 'cp CUST_PROFILE ⋈ cc CUST_CONTACT (was single-source)' },
+        { kind: 'modified', target: 'public.customer.phone_e164', detail: 'source: cp.TEL_NO → cc.TEL_NO' },
+        { kind: 'added',    target: 'public.customer.email', detail: 'source: cc.EMAIL_ADDR, confidence 95%' },
+        { kind: 'added',    target: 'public.customer.preferred_channel', detail: 'source: cc.PREF_CHANNEL, confidence 80%' },
+        { kind: 'added',    target: 'public.customer.marketing_opt_in', detail: 'source: cc.OPT_IN_FLG' },
+        { kind: 'modified', target: 'public.transaction_2024.direction', detail: 'source confidence lowered 0.75 → 0.65' },
+      ] },
+  ],
+  p2: [
+    { id: 'p2-v1.0', version: '1.0', createdAt: '2026-04-09 13:10', author: 'Admin',
+      notes: 'Initial spec for deposit accounts', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-09 17:40',
+      changes: [] },
+    { id: 'p2-v1.1', version: '1.1', createdAt: '2026-04-15 10:00', author: 'Admin',
+      notes: 'Resolved warnings on branch_code length mismatch', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-15 15:25',
+      changes: [
+        { kind: 'modified', target: 'public.deposit_account.branch_code', detail: 'CHAR(4) → CHAR(6) with left-pad' },
+      ] },
+  ],
+  p3: [
+    /* FX Treasury — only draft, never snapshotted */
+  ],
+  p4: [
+    { id: 'p4-v0.9', version: '0.9', createdAt: '2026-04-22 09:00', author: 'Admin',
+      notes: 'Draft for review — AS-IS DDL pending', status: 'pending',
+      reviewer: 'Admin',
+      changes: [] },
+  ],
+  p5: [
+    { id: 'p5-v1.0', version: '1.0', createdAt: '2026-02-25 14:00', author: 'Admin',
+      notes: 'Card auth initial', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-02-26 10:15', changes: [] },
+    { id: 'p5-v1.1', version: '1.1', createdAt: '2026-03-01 11:30', author: 'Admin',
+      notes: 'Pre-cutover final', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-03-01 14:00',
+      changes: [{ kind: 'modified', target: 'public.card_auth', detail: 'channel_code lookup updated' }] },
+  ],
+  p6: [
+    { id: 'p6-v1.0', version: '1.0', createdAt: '2026-02-03 09:00', author: 'Admin',
+      notes: 'GL consolidation initial', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-02-04 11:20', changes: [] },
+  ],
+  p7: [
+    { id: 'p7-v1.0', version: '1.0', createdAt: '2026-01-20 10:00', author: 'Admin',
+      notes: 'Trade finance mapping', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-01-22 13:45', changes: [] },
+  ],
+  p8: [],
+};
+
+/* Audit log — every mutating event, most recent first. */
+
+const AUDIT_LOG_BY_PROJECT = {
+  p1: [
+    { at: '2026-04-23 15:42', actor: 'Admin', action: 'updated', target: 'public.customer · Table binding', detail: 'Added joinOn: cp.CUST_ID = cc.CUST_ID' },
+    { at: '2026-04-23 14:20', actor: 'Admin', action: 'updated', target: 'public.customer · Table binding', detail: 'Changed JOIN type INNER → LEFT' },
+    { at: '2026-04-23 11:05', actor: 'Admin', action: 'added',   target: 'public.transaction_all', detail: 'New target table (UNION composition)' },
+    { at: '2026-04-22 17:30', actor: 'Admin', action: 'snapshot',target: 'v1.2',   detail: '7 changes since v1.1 · sent to Reviewer' },
+    { at: '2026-04-21 11:20', actor: 'Admin', action: 'updated', target: 'public.customer', detail: 'Split from single source to CUST_PROFILE ⋈ CUST_CONTACT' },
+    { at: '2026-04-19 09:05', actor: 'Admin', action: 'imported',target: 'TO-BE DDL', detail: 'core-target.sql · 138 tables' },
+    { at: '2026-04-18 14:22', actor: 'Admin', action: 'imported',target: 'AS-IS DDL', detail: 'core-legacy.ddl · 142 tables' },
+    { at: '2026-04-11 09:15', actor: 'Reviewer', action: 'approved', target: 'v1.1',  detail: 'All good — ready to run' },
+    { at: '2026-04-10 16:45', actor: 'Admin', action: 'snapshot',target: 'v1.1',   detail: '7 changes since v1.0 · sent to Reviewer' },
+    { at: '2026-04-10 14:10', actor: 'Admin', action: 'added',   target: 'public.account.tenant_id', detail: 'default = gen_random_uuid()' },
+    { at: '2026-04-03 14:20', actor: 'Reviewer', action: 'approved', target: 'v1.0',  detail: 'Initial sign-off' },
+    { at: '2026-04-02 10:30', actor: 'Admin', action: 'snapshot',target: 'v1.0',   detail: 'Initial mapping spec' },
+    { at: '2026-04-02 09:15', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "Core Ledger" created' },
+  ],
+  p2: [
+    { at: '2026-04-15 15:25', actor: 'Reviewer', action: 'approved', target: 'v1.1', detail: 'branch_code fix verified' },
+    { at: '2026-04-15 10:00', actor: 'Admin', action: 'snapshot', target: 'v1.1', detail: '1 change since v1.0' },
+    { at: '2026-04-14 16:40', actor: 'Admin', action: 'updated', target: 'public.deposit_account.branch_code', detail: 'CHAR(4) → CHAR(6) with left-pad' },
+    { at: '2026-04-10 17:18', actor: 'Admin', action: 'imported', target: 'TO-BE DDL', detail: 'deposit-pg15.sql · 85 tables' },
+    { at: '2026-04-10 11:30', actor: 'Admin', action: 'imported', target: 'AS-IS DDL', detail: 'deposit-ora11.sql · 87 tables' },
+    { at: '2026-04-09 17:40', actor: 'Reviewer', action: 'approved', target: 'v1.0', detail: 'Sign-off' },
+    { at: '2026-04-09 13:10', actor: 'Admin', action: 'snapshot', target: 'v1.0', detail: 'Initial' },
+  ],
+  p3: [
+    { at: '2026-04-23 10:30', actor: 'Admin', action: 'updated', target: 'Project Settings · Source', detail: 'Simulated connection failure' },
+    { at: '2026-04-20 10:11', actor: 'Admin', action: 'imported', target: 'AS-IS DDL', detail: 'fx-mainframe.ddl · 34 tables' },
+    { at: '2026-04-19 16:00', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "FX Treasury" created' },
+  ],
+  p4: [
+    { at: '2026-04-22 09:00', actor: 'Admin', action: 'snapshot', target: 'v0.9', detail: 'Draft for early review' },
+    { at: '2026-04-21 16:02', actor: 'Admin', action: 'imported', target: 'TO-BE DDL', detail: 'loan-pg-target.sql · 58 tables' },
+    { at: '2026-04-20 11:30', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "Loan Origination" created' },
+  ],
+  p5: [
+    { at: '2026-03-14 20:00', actor: 'ops-bot', action: 'run-complete', target: 'migrate', detail: 'Cutover finished · 28 tables · 812M rows' },
+    { at: '2026-03-01 14:00', actor: 'Reviewer', action: 'approved', target: 'v1.1', detail: 'Pre-cutover sign-off' },
+    { at: '2026-03-01 11:30', actor: 'Admin', action: 'snapshot', target: 'v1.1', detail: 'Final before cutover' },
+    { at: '2026-02-26 10:15', actor: 'Reviewer', action: 'approved', target: 'v1.0', detail: 'Initial' },
+  ],
+  p6: [
+    { at: '2026-02-28 18:00', actor: 'ops-bot', action: 'run-complete', target: 'migrate', detail: '113 tables · cutover done' },
+    { at: '2026-02-04 11:20', actor: 'Reviewer', action: 'approved', target: 'v1.0', detail: 'Sign-off' },
+  ],
+  p7: [
+    { at: '2026-02-02 16:30', actor: 'ops-bot', action: 'run-complete', target: 'migrate', detail: '19 tables · cutover done' },
+    { at: '2026-01-22 13:45', actor: 'Reviewer', action: 'approved', target: 'v1.0', detail: 'Sign-off' },
+  ],
+  p8: [
+    { at: 'just now', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "Remittance Hub" created' },
+  ],
+};
+
+const getSnapshots     = (projectId) => MAPPING_SNAPSHOTS_BY_PROJECT[projectId] || [];
+const getAuditLog      = (projectId) => AUDIT_LOG_BY_PROJECT[projectId] || [];
+const getLatestApproved = (projectId) => {
+  const snaps = getSnapshots(projectId);
+  for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].status === 'approved') return snaps[i];
+  return null;
+};
+
+/* ─── Notifications (in-app inbox) ───────────────────────────────
+   Closed/air-gapped environments can't rely on Slack/email/webhooks, so
+   the primary channel is an in-app notification center. Real tool writes
+   to a notifications table; here we seed cross-project events. */
+
+const NOTIFICATION_EVENTS = [
+  { k: 'run-start',    l: 'Run 시작',              desc: '매핑 실행이 시작될 때' },
+  { k: 'run-complete', l: 'Run 완료 (성공)',       desc: '모든 단계 통과하고 마무리' },
+  { k: 'run-warn',     l: 'Run 완료 (경고/에러)',  desc: 'Quarantine 비어있지 않은 완료' },
+  { k: 'run-abort',    l: 'Run 중단/실패',         desc: '사용자 abort 또는 stage 실패' },
+  { k: 'approval-req', l: '승인 요청 도착',        desc: '내가 리뷰어로 지정되었을 때' },
+  { k: 'approval-res', l: '승인 결과',             desc: '내 요청이 승인/반려되었을 때' },
+  { k: 'quarantine',   l: 'Quarantine 임계치',     desc: '에러 행이 기준 수 이상 쌓였을 때' },
+  { k: 'conn-failed',  l: '연결 실패 감지',        desc: 'AS-IS/TO-BE 접속이 끊기거나 타임아웃' },
+  { k: 'ddl-change',   l: 'DDL 변경 감지',         desc: '소스 스키마가 import 시점과 달라졌을 때' },
+];
+
+const NOTIFICATIONS_SEED = [
+  { id: 'n-001', at: '2026-04-23 15:42', projectId: 'p1', severity: 'info',  category: 'approval-req',
+    title: '승인 요청 · v1.2', body: 'Reviewer 가 Core Ledger v1.2 스냅샷 리뷰를 기다리고 있습니다',
+    link: { tab: 'versions' }, read: false },
+  { id: 'n-002', at: '2026-04-23 14:05', projectId: 'p1', severity: 'warn',  category: 'quarantine',
+    title: 'Quarantine 누적', body: 'GL_ENTRY FK violation 4 rows · 확인 필요',
+    link: { tab: 'execution' }, read: false },
+  { id: 'n-003', at: '2026-04-23 11:02', projectId: 'p3', severity: 'error', category: 'conn-failed',
+    title: 'AS-IS 접속 stale', body: 'FX Treasury · fx-mainframe 3일간 재테스트 없음',
+    link: { tab: 'settings', section: 'source' }, read: false },
+  { id: 'n-004', at: '2026-04-23 10:20', projectId: 'p4', severity: 'info',  category: 'approval-req',
+    title: '승인 요청 · v0.9', body: 'Admin 의 Loan Origination 초기 리뷰 요청',
+    link: { tab: 'versions' }, read: true },
+  { id: 'n-005', at: '2026-04-22 17:30', projectId: 'p1', severity: 'info',  category: 'approval-req',
+    title: '새 스냅샷', body: 'Admin 이 Core Ledger v1.2 스냅샷을 생성했습니다',
+    link: { tab: 'versions' }, read: true },
+  { id: 'n-006', at: '2026-04-21 09:14', projectId: 'p1', severity: 'info',  category: 'run-start',
+    title: 'Run 시작', body: 'Core Ledger · run-2026-0421-0914 실행 시작',
+    link: { tab: 'execution' }, read: true },
+  { id: 'n-007', at: '2026-04-15 15:25', projectId: 'p2', severity: 'ok',    category: 'approval-res',
+    title: '승인됨 · v1.1', body: 'Reviewer 가 Deposit Accounts v1.1 을 승인했습니다',
+    link: { tab: 'versions' }, read: true },
+  { id: 'n-008', at: '2026-03-14 20:00', projectId: 'p5', severity: 'ok',    category: 'run-complete',
+    title: 'Cutover 완료', body: 'Card Authorization · 28 tables · 812M rows · 4h 12m',
+    link: { tab: 'execution' }, read: true },
+  { id: 'n-009', at: '2026-02-28 18:00', projectId: 'p6', severity: 'ok',    category: 'run-complete',
+    title: 'Cutover 완료', body: 'GL Consolidation · 113 tables · 완료',
+    link: { tab: 'execution' }, read: true },
+  { id: 'n-010', at: '2026-02-02 16:30', projectId: 'p7', severity: 'ok',    category: 'run-complete',
+    title: 'Cutover 완료', body: 'Trade Finance · 19 tables · 완료',
+    link: { tab: 'execution' }, read: true },
+  { id: 'n-011', at: '2026-04-23 16:15', projectId: null,  severity: 'info', category: 'ddl-change',
+    title: 'DDL drift 감지', body: 'Core Ledger AS-IS DDL 해시가 import 시점과 달라졌습니다 · 재import 권장',
+    link: { tab: 'settings', section: 'source' }, read: false },
+];
+
+const getNotifications    = () => NOTIFICATIONS_SEED;
+const getUnreadCount      = (list) => list.filter(n => !n.read).length;
+
+/* ─── Run history per project ─────────────────────────────────────
+   Real tool logs every run (rehearsal + cutover). Rehearsals typically
+   fired nightly by Control-M; cutover runs are rare and manually gated.
+   Seeded newest-first. The first entry of a 'running' result is the
+   currently-active run rendered in Execution tab's header. */
+
+const RUNS_BY_PROJECT = {
+  p1: [
+    { id: 'run-2026-0421-0914', mode: 'rehearsal', startedAt: '2026-04-21 09:14', elapsed: '00:27:06', eta: '00:28:40', result: 'running',  quarantineCount: 6,  triggeredBy: { actor: 'Admin',  source: 'manual' } },
+    { id: 'run-2026-0420-2200', mode: 'rehearsal', startedAt: '2026-04-20 22:00', elapsed: '3h 42m',  result: 'ok',      quarantineCount: 8,  triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0419-2200', mode: 'rehearsal', startedAt: '2026-04-19 22:00', elapsed: '3h 55m',  result: 'warn',    quarantineCount: 14, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0418-2200', mode: 'rehearsal', startedAt: '2026-04-18 22:00', elapsed: '4h 12m',  result: 'warn',    quarantineCount: 22, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0417-2200', mode: 'rehearsal', startedAt: '2026-04-17 22:00', elapsed: '4h 30m',  result: 'aborted', quarantineCount: 0,  triggeredBy: { actor: 'control-m', source: 'nightly schedule' }, error: 'encode · invalid EBCDIC byte halted run' },
+    { id: 'run-2026-0416-1420', mode: 'rehearsal', startedAt: '2026-04-16 14:20', elapsed: '2h 18m',  result: 'ok',      quarantineCount: 28, triggeredBy: { actor: 'Admin',  source: 'manual' } },
+    { id: 'run-2026-0414-2200', mode: 'rehearsal', startedAt: '2026-04-14 22:00', elapsed: '5h 04m',  result: 'warn',    quarantineCount: 48, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+  ],
+  p2: [
+    { id: 'run-2026-0423-2200', mode: 'rehearsal', startedAt: '2026-04-23 22:00', elapsed: '2h 50m',  result: 'ok',    quarantineCount: 3, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0422-2200', mode: 'rehearsal', startedAt: '2026-04-22 22:00', elapsed: '2h 58m',  result: 'ok',    quarantineCount: 5, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0421-2200', mode: 'rehearsal', startedAt: '2026-04-21 22:00', elapsed: '3h 05m',  result: 'warn',  quarantineCount: 12, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+  ],
+  p5: [
+    { id: 'cut-2026-0314-2200', mode: 'cutover',   startedAt: '2026-03-14 22:00', elapsed: '4h 12m',  result: 'ok',    quarantineCount: 0, triggeredBy: { actor: 'Reviewer',  source: 'manual · cutover' } },
+    { id: 'run-2026-0312-2200', mode: 'rehearsal', startedAt: '2026-03-12 22:00', elapsed: '4h 18m',  result: 'ok',    quarantineCount: 0, triggeredBy: { actor: 'control-m',   source: 'nightly schedule' } },
+    { id: 'run-2026-0311-2200', mode: 'rehearsal', startedAt: '2026-03-11 22:00', elapsed: '4h 22m',  result: 'ok',    quarantineCount: 2, triggeredBy: { actor: 'control-m',   source: 'nightly schedule' } },
+  ],
+  p6: [
+    { id: 'cut-2026-0228-2000', mode: 'cutover',   startedAt: '2026-02-28 20:00', elapsed: '8h 45m',  result: 'ok',    quarantineCount: 4, triggeredBy: { actor: 'Reviewer',  source: 'manual · cutover' } },
+  ],
+  p7: [
+    { id: 'cut-2026-0202-2200', mode: 'cutover',   startedAt: '2026-02-02 22:00', elapsed: '1h 32m',  result: 'ok',    quarantineCount: 0, triggeredBy: { actor: 'Reviewer',  source: 'manual · cutover' } },
+  ],
+  /* p3/p4/p8 are in analysis/planning — no runs yet */
+};
+
+const getRuns       = (projectId) => RUNS_BY_PROJECT[projectId] || [];
+const getActiveRun  = (projectId) => {
+  const runs = getRuns(projectId);
+  return runs.find(r => r.result === 'running') || null;
+};
+const getPhaseLabel = (k) => PHASES.find(p => p.k === k)?.l || k;
+const getPhaseDesc  = (k) => PHASES.find(p => p.k === k)?.desc || '';
+
 Object.assign(window, {
   PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT,
   mappingsFromSchemaDiff, getColumnMappings, getSchemaDiff,
@@ -811,4 +1267,9 @@ Object.assign(window, {
   getAsisInventory, getTobeInventory,
   ASIS_COLUMN_SCHEMA, effectiveAsisCols,
   mockColumnProfile, mockTableSamples,
+  getPreflightChecks, QUARANTINE_ENTRIES,
+  MAPPING_SNAPSHOTS_BY_PROJECT, AUDIT_LOG_BY_PROJECT,
+  getSnapshots, getAuditLog, getLatestApproved,
+  NOTIFICATION_EVENTS, NOTIFICATIONS_SEED, getNotifications, getUnreadCount,
+  PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun, getPhaseLabel, getPhaseDesc,
 });

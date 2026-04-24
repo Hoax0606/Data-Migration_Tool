@@ -1,13 +1,16 @@
 /* Project Settings tab — general, source/target, schedule, notifications, danger zone */
 
-const ProjectSettings = ({ project, onDelete, onDuplicate, onRename, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail }) => {
-  const [section, setSection] = React.useState('general');
+const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDelete, onDuplicate, onRename, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail }) => {
+  /* Section can be controlled (from top-bar badge deep-link) or internal. */
+  const [localSection, setLocalSection] = React.useState('general');
+  const section = sectionProp ?? localSection;
+  const setSection = onSectionChange ?? setLocalSection;
 
   const sections = [
     { k: 'general',  l: 'General',        d: 'Name, steward, environment' },
     { k: 'source',   l: 'Source',         d: 'Legacy system connection' },
     { k: 'target',   l: 'Target',         d: 'Destination DB & encoding' },
-    { k: 'schedule', l: 'Schedule',       d: 'Runs & cutover window' },
+    { k: 'schedule', l: 'Schedule',        d: 'Nightly rehearsal · cutover · external trigger' },
     { k: 'notify',   l: 'Notifications',  d: 'Slack, email, webhooks' },
     { k: 'danger',   l: 'Danger zone',    d: 'Delete project',   danger: true },
   ];
@@ -97,8 +100,7 @@ const PSGeneral = ({ project, onRename }) => {
             ))}
           </div>
         </PSRow>
-        <PSRow label="Steward"><PSInput value="henry.oh@ksinfo.co.kr" mono/></PSRow>
-        <PSRow label="Created"><PSInput value="2026-02-11 14:20 KST · by henry.oh" readOnly mono/></PSRow>
+        <PSRow label="Created"><PSInput value="2026-02-11 14:20 KST" readOnly mono/></PSRow>
       </PSCard>
     </>
   );
@@ -505,44 +507,165 @@ const DdlDeleteConfirm = ({ title, filename, side, onCancel, onConfirm }) => (
   </div>
 );
 
-const PSSchedule = () => (
-  <>
-    <PSHead title="Schedule" desc="Automated run windows and cutover."
-      actions={<Btn kind="primary" size="sm">Save changes</Btn>}/>
-    <PSCard title="Nightly rehearsal">
-      <PSRow label="Enabled"><PSToggle on={true} label="Run every night"/></PSRow>
-      <PSRow label="Start time"><PSInput value="01:00 KST" mono width={120}/></PSRow>
-      <PSRow label="Max duration"><PSInput value="240" mono suffix="minutes" width={120}/></PSRow>
-    </PSCard>
-    <PSCard title="Cutover window">
-      <PSRow label="Planned cutover"><PSInput value="2026-05-03 22:00 KST" mono/></PSRow>
-      <PSRow label="Freeze period"><PSInput value="T-24h · read-only source" readOnly mono/></PSRow>
-      <PSRow label="Rollback SLA"><PSInput value="15" mono suffix="minutes" width={120}/></PSRow>
-    </PSCard>
-  </>
-);
+const PSSchedule = ({ project }) => {
+  const cut = project?.cutover || { dday: 'TBD', freezeHours: 24, rollbackSla: 15 };
+  const pid = project?.id || 'p1';
+  const [rehearsalOn, setRehearsalOn] = React.useState(true);
+  const [startTime, setStartTime] = React.useState('22:00 KST');
+  const [maxDuration, setMaxDuration] = React.useState('240');
+  const [extTriggerOpen, setExtTriggerOpen] = React.useState(false);
+  return (
+    <>
+      <PSHead title="Schedule" desc="Nightly rehearsal 자동 실행 · 컷오버 D-day · 외부 스케줄러 연동 옵션"
+        actions={<Btn kind="primary" size="sm">Save changes</Btn>}/>
 
-const PSNotify = () => (
-  <>
-    <PSHead title="Notifications" desc="Where run events and alerts are delivered."
-      actions={<Btn kind="primary" size="sm">Save changes</Btn>}/>
-    <PSCard title="Slack">
-      <PSRow label="Workspace"><PSInput value="ksinfo.slack.com" readOnly mono/></PSRow>
-      <PSRow label="Channel"><PSInput value="#mig-kdb-core" mono/></PSRow>
-      <PSRow label="On run start"><PSToggle on={false} label="Notify"/></PSRow>
-      <PSRow label="On run complete"><PSToggle on={true} label="Notify"/></PSRow>
-      <PSRow label="On error (severity ≥ error)"><PSToggle on={true} label="Notify"/></PSRow>
-    </PSCard>
-    <PSCard title="Email">
-      <PSRow label="Recipients"><PSInput value="henry.oh@ksinfo.co.kr, jh.lee@kdb.co.kr" mono/></PSRow>
-      <PSRow label="Digest"><PSInput value="daily · 08:00 KST" mono/></PSRow>
-    </PSCard>
-    <PSCard title="Webhook">
-      <PSRow label="URL"><PSInput value="https://ops.kdb.internal/hooks/mig" mono/></PSRow>
-      <PSRow label="Secret"><PSInput value="whsec_••••••••••••••" readOnly mono/></PSRow>
-    </PSCard>
-  </>
-);
+      {/* Nightly rehearsal — internal scheduler */}
+      <PSCard title="Nightly rehearsal" desc="매일 정해진 시각에 dry-run rehearsal 을 자동 실행합니다. Control-M 같은 외부 스케줄러가 있는 환경에서는 비활성화하고 CLI 트리거를 쓰세요.">
+        <PSRow label="Enabled" hint={rehearsalOn ? '활성화됨 — 매일 밤 자동 실행' : '비활성화 — 수동 또는 외부 스케줄러가 트리거'}>
+          <PSToggle on={rehearsalOn} onChange={setRehearsalOn} label={rehearsalOn ? 'Run every night' : 'Paused'}/>
+        </PSRow>
+        <PSRow label="Start time" hint="타임존은 사이트 설정 기준">
+          <PSInput value={startTime} onChange={setStartTime} mono width={140}/>
+        </PSRow>
+        <PSRow label="Max duration" hint="초과 시 자동 abort">
+          <PSInput value={maxDuration} onChange={setMaxDuration} mono suffix="minutes" width={120}/>
+        </PSRow>
+        <PSRow label="Next scheduled">
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5,
+            color: rehearsalOn ? 'var(--text-2)' : 'var(--text-4)' }}>
+            {rehearsalOn ? '2026-04-25 ' + startTime : '— (disabled)'}
+          </span>
+        </PSRow>
+      </PSCard>
+
+      {/* Cutover window */}
+      <PSCard title="Cutover window" desc="고객과 합의된 D-day 및 관련 시간 창.">
+        <PSRow label="Planned cutover" hint="이행 실제 실행 일시 (본운영 전환)">
+          <PSInput value={cut.dday} mono/>
+        </PSRow>
+        <PSRow label="Freeze start (T-N hours)" hint="소스 DB 가 read-only 로 전환되는 시점">
+          <PSInput value={String(cut.freezeHours)} mono suffix="hours" width={120}/>
+        </PSRow>
+        <PSRow label="Rollback SLA" hint="컷오버 실패 판단 후 구 시스템 복구 완료까지 허용 시간">
+          <PSInput value={String(cut.rollbackSla)} mono suffix="minutes" width={120}/>
+        </PSRow>
+      </PSCard>
+
+      {/* External trigger — optional / advanced */}
+      <div style={{
+        border: '1px solid var(--border)', borderRadius: 4,
+        background: 'var(--panel)', marginBottom: 14, overflow: 'hidden',
+      }}>
+        <div onClick={() => setExtTriggerOpen(o => !o)} style={{
+          padding: '10px 14px',
+          display: 'flex', alignItems: 'center', gap: 10,
+          cursor: 'pointer',
+          borderBottom: extTriggerOpen ? '1px solid var(--border)' : 'none',
+          background: extTriggerOpen ? 'var(--panel-2)' : 'var(--panel)',
+        }}>
+          <span style={{ color: 'var(--text-4)', fontSize: 10, width: 10 }}>{extTriggerOpen ? '▾' : '▸'}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 600 }}>External trigger (선택)</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
+              Control-M · Jenkins · Airflow 등 기존 사내 스케줄러에서 이 프로젝트를 트리거하는 방법
+            </div>
+          </div>
+          <StatusBadge tone="queued">optional</StatusBadge>
+        </div>
+        {extTriggerOpen && (
+          <div style={{ padding: '12px 14px' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 10 }}>
+              내장 스케줄러를 끄고 외부 스케줄러에 아래 명령을 등록하면 동일하게 동작합니다. 둘 다 켜면 중복 실행 위험.
+            </div>
+            <div style={{
+              padding: 10, background: '#0e1a2b', color: '#cad7e8',
+              fontFamily: 'var(--mono)', fontSize: 11, borderRadius: 3, lineHeight: 1.6,
+            }}>
+              <div><span style={{ color: '#7a8aa6' }}># 야간 rehearsal (dry-run · TEST 타겟)</span></div>
+              <div><span style={{ color: '#e8b86f' }}>migrate</span> run --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --mode <span style={{ color: '#9fd9b3' }}>rehearsal</span> --dry-run</div>
+              <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># 컷오버 (운영 타겟 · 승인된 스냅샷 필요)</span></div>
+              <div><span style={{ color: '#e8b86f' }}>migrate</span> run --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --mode <span style={{ color: '#9fd9b3' }}>cutover</span></div>
+              <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># 롤백</span></div>
+              <div><span style={{ color: '#e8b86f' }}>migrate</span> rollback --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --to <span style={{ color: '#9fd9b3' }}>pre-cutover</span></div>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 8, fontFamily: 'var(--mono)' }}>
+              CLI 경로 · API endpoint · API token은 Solution Settings › External integrations에서 관리
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+const PSNotify = () => {
+  const events = window.NOTIFICATION_EVENTS || [];
+  /* All events on by default. Real tool persists per-user prefs server-side. */
+  const [subs, setSubs] = React.useState(() => {
+    const o = {}; events.forEach(e => { o[e.k] = true; }); return o;
+  });
+  const toggle = (k) => setSubs(s => ({ ...s, [k]: !s[k] }));
+
+  return (
+    <>
+      <PSHead title="Notifications" desc="In-app inbox · 닫힌 네트워크에서는 유일한 기본 채널입니다."
+        actions={<Btn kind="primary" size="sm">Save changes</Btn>}/>
+
+      {/* Closed-env hint */}
+      <div style={{
+        padding: '10px 14px', marginBottom: 14,
+        border: '1px solid var(--border)', borderRadius: 4,
+        background: 'var(--panel-2)',
+        fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6,
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>📬 In-app notification inbox</div>
+        외부 Slack / Email / Webhook 은 폐쇄망에서는 쓸 수 없으므로, 모든 알림은 상단의
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, margin: '0 4px',
+          padding: '1px 6px', border: '1px solid var(--border-strong)', borderRadius: 3,
+          fontFamily: 'var(--mono)', fontSize: 10.5 }}>🔔 Bell</span>
+        아이콘을 통해 수신됩니다. 외부 채널은 V1 에서 환경별로 선택 가능하도록 사이트 설정에 추가 예정.
+      </div>
+
+      <PSCard title="이벤트 구독" desc="알림으로 받을 이벤트를 선택합니다.">
+        {events.map((e, i) => (
+          <div key={e.k} style={{
+            display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14,
+            padding: '8px 0',
+            borderBottom: i < events.length - 1 ? '1px dashed var(--border)' : 'none',
+          }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>{e.l}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>{e.desc}</div>
+            </div>
+            <PSToggle on={subs[e.k]} onChange={() => toggle(e.k)} label=""/>
+          </div>
+        ))}
+      </PSCard>
+
+      <PSCard title="수신자 옵션" desc="이 프로젝트에 관한 알림을 받는 범위.">
+        <PSRow label="Scope" hint="본인이 관여한 활동만 받을지, 프로젝트 전체 이벤트를 받을지">
+          <div style={{ display: 'flex', gap: 5 }}>
+            {['mine-only', 'all-project'].map(k => {
+              const active = k === 'all-project';
+              return (
+                <button key={k} style={{
+                  padding: '3px 12px', fontSize: 11, fontFamily: 'var(--mono)',
+                  border: `1px solid ${active ? 'var(--navy)' : 'var(--border)'}`,
+                  background: active ? 'var(--navy)' : 'var(--panel)',
+                  color: active ? '#fff' : 'var(--text-2)',
+                  borderRadius: 3, cursor: 'pointer',
+                }}>{k === 'mine-only' ? 'My activity only' : 'All project events'}</button>
+              );
+            })}
+          </div>
+        </PSRow>
+        <PSRow label="Retention" hint="알림이 inbox 에 유지되는 기간">
+          <PSInput value="90 days" mono width={160}/>
+        </PSRow>
+      </PSCard>
+    </>
+  );
+};
 
 const PSDanger = ({ project, onDelete, onDuplicate }) => {
   const [confirmText, setConfirmText] = React.useState('');

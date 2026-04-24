@@ -756,7 +756,7 @@ const MappingExcelView = ({ table }) => {
         <tr><td style={xlsxRowNum}>3</td><td style={{...xlsxCell, fontWeight: 600}}>Source</td><td style={{...xlsxCell, fontFamily: 'var(--mono)'}} colSpan="2">{table.asis}</td></tr>
         <tr><td style={xlsxRowNum}>4</td><td style={{...xlsxCell, fontWeight: 600}}>Target</td><td style={{...xlsxCell, fontFamily: 'var(--mono)'}} colSpan="2">{table.tobe}</td></tr>
         <tr><td style={xlsxRowNum}>5</td><td style={{...xlsxCell, fontWeight: 600}}>Generated</td><td style={{...xlsxCell, fontFamily: 'var(--mono)'}} colSpan="2">2026-04-21 09:41 JST</td></tr>
-        <tr><td style={xlsxRowNum}>6</td><td style={{...xlsxCell, fontWeight: 600}}>Author</td><td style={{...xlsxCell}} colSpan="2">Henry Oh · KS Info System</td></tr>
+        <tr><td style={xlsxRowNum}>6</td><td style={{...xlsxCell, fontWeight: 600}}>Author</td><td style={{...xlsxCell}} colSpan="2">KS Info System</td></tr>
         <tr><td style={xlsxRowNum}>7</td><td style={xlsxCell} colSpan="3"/></tr>
         <tr><td style={xlsxRowNum}>8</td><td style={xlsxHeaderCell}>Rule kind</td><td style={xlsxHeaderCell}>Count</td><td style={xlsxHeaderCell}>%</td></tr>
         {(() => {
@@ -1281,7 +1281,7 @@ const DashboardSnapshotView = ({ projectTables }) => {
         <tr><td style={xlsxRowNum}>2</td><td style={xlsxCell} colSpan="4"/></tr>
         <tr><td style={xlsxRowNum}>3</td><td style={{...xlsxCell, fontWeight: 600}}>Captured</td><td style={{...xlsxCell, fontFamily: 'var(--mono)'}} colSpan="3">2026-04-21 09:41 JST</td></tr>
         <tr><td style={xlsxRowNum}>4</td><td style={{...xlsxCell, fontWeight: 600}}>Run</td><td style={{...xlsxCell, fontFamily: 'var(--mono)'}} colSpan="3">run-2026-0421-0914</td></tr>
-        <tr><td style={xlsxRowNum}>5</td><td style={{...xlsxCell, fontWeight: 600}}>Author</td><td style={xlsxCell} colSpan="3">Henry Oh · KS Info System</td></tr>
+        <tr><td style={xlsxRowNum}>5</td><td style={{...xlsxCell, fontWeight: 600}}>Author</td><td style={xlsxCell} colSpan="3">KS Info System</td></tr>
         <tr><td style={xlsxRowNum}>6</td><td style={xlsxCell} colSpan="4"/></tr>
         <tr>
           <td style={xlsxRowNum}>7</td>

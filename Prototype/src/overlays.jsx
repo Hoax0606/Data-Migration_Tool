@@ -1,4 +1,4 @@
-/* Overlay screens: Sign-out, Help & shortcuts, About migrate.console */
+/* Overlay screens: Sign-out, Help & shortcuts, About ModernizeProData */
 
 const OverlayShell = ({ title, desc, onClose, children, wide }) => (
   <div style={{
@@ -53,12 +53,10 @@ const SignOutScreen = ({ onCancel, onConfirm }) => {
         padding: '24px 24px 18px',
         boxShadow: '0 20px 60px rgba(10,20,18,0.15)',
       }}>
-        <div style={{
-          width: 42, height: 42, borderRadius: 6, margin: '0 auto 12px',
-          background: 'var(--navy-50)', color: 'var(--navy)',
-          display: 'grid', placeItems: 'center', fontSize: 20,
-        }}>⎋</div>
-        <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, marginBottom: 5 }}>Sign out of migrate.console?</div>
+        <img src="icon/mpd.png" alt="ModernizeProData" style={{
+          width: 48, height: 48, margin: '0 auto 12px', display: 'block',
+        }}/>
+        <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, marginBottom: 5 }}>Sign out of ModernizeProData?</div>
         <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.55, fontFamily: 'var(--mono)' }}>
           Running migrations will continue on the server.<br/>
           You'll need to sign in again to view their progress.
@@ -77,7 +75,7 @@ const SignOutScreen = ({ onCancel, onConfirm }) => {
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button onClick={onCancel} style={{
             flex: 1, height: 28, border: '1px solid var(--border-strong)',
-            background: '#fff', color: 'var(--text)', borderRadius: 3,
+            background: 'var(--panel)', color: 'var(--text)', borderRadius: 3,
             fontSize: 12, fontWeight: 500, cursor: 'pointer',
           }}>Cancel</button>
           <button onClick={onConfirm} style={{
@@ -115,15 +113,11 @@ const SignedOutScreen = ({ onSignIn }) => {
 
           {/* Brand above the card — gives it room to breathe */}
           <div style={{ textAlign: 'center', marginBottom: 18 }}>
-            <div style={{
-              width: 42, height: 42, borderRadius: 8, margin: '0 auto 10px',
-              background: 'var(--navy)', color: '#fff',
-              display: 'grid', placeItems: 'center',
-              fontFamily: 'var(--mono)', fontSize: 17, fontWeight: 700,
-              boxShadow: '0 1px 0 rgba(255,255,255,0.3) inset, 0 2px 6px rgba(20,60,50,0.18)',
-            }}>M</div>
+            <img src="icon/mpd.png" alt="ModernizeProData" style={{
+              width: 56, height: 56, margin: '0 auto 10px', display: 'block',
+            }}/>
             <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.1 }}>
-              migrate.console
+              ModernizeProData
               <span style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginLeft: 6 }}>v4.12.0</span>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 3 }}>
@@ -261,10 +255,10 @@ const ForgotPassword = ({ onClose }) => (
           border: '1px solid var(--border-strong)',
           borderRadius: 2, fontFamily: 'var(--mono)', fontSize: 10.5,
           overflowX: 'auto',
-        }}>{`$ sudo systemctl stop migrate.console
-$ migrate-console reset-password \\
+        }}>{`$ sudo systemctl stop modernizeprodata
+$ mpd-cli reset-password \\
     --user admin --password <new-password>
-$ sudo systemctl start migrate.console`}</pre>
+$ sudo systemctl start modernizeprodata`}</pre>
 
         <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '12px 0 5px' }}>
           Otherwise
@@ -377,7 +371,7 @@ const Help = ({ onClose }) => {
   );
 };
 
-// ── About migrate.console ────────────────────────────────────────
+// ── About ModernizeProData ───────────────────────────────────────
 const About = ({ onClose }) => {
   const Row = ({ l, v, mono = true }) => (
     <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', padding: '6px 0', borderTop: '1px solid var(--border)' }}>
@@ -387,24 +381,21 @@ const About = ({ onClose }) => {
   );
   return (
     <OverlayShell onClose={onClose}
-      title="About migrate.console"
+      title="About ModernizeProData"
       desc="Build info, licensing, and credits.">
 
       <div style={{ textAlign: 'center', padding: '8px 0 14px' }}>
-        <div style={{
-          width: 42, height: 42, borderRadius: 6, margin: '0 auto 8px',
-          background: 'var(--navy)', color: '#fff',
-          display: 'grid', placeItems: 'center',
-          fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 700,
-        }}>M</div>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>migrate.console</div>
+        <img src="icon/mpd.png" alt="ModernizeProData" style={{
+          width: 56, height: 56, margin: '0 auto 8px', display: 'block',
+        }}/>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>ModernizeProData</div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 2 }}>
           v4.12.0 · build 2026.04.18-a9f3c1
         </div>
       </div>
 
       <div>
-        <Row l="Product"  v="KS migrate.console" mono={false}/>
+        <Row l="Product"  v="ModernizeProData" mono={false}/>
         <Row l="Edition"  v="Enterprise · on-premise"/>
         <Row l="License"  v="KDB-2025-A1 · valid until 2027-06-30"/>
         <Row l="Vendor"   v="KS Info System Co., Ltd." mono={false}/>
@@ -474,7 +465,6 @@ const AccountProfile = ({ onClose }) => {
         <Row l="Username" v="admin"/>
         <Row l="Role" v="Owner (full access)"/>
         <Row l="Last sign-in" v="2026-04-22 08:52:14 JST"/>
-        <Row l="Sign-in from" v="127.0.0.1 · on-premise console"/>
         <Row l="Active session" v="since 2026-04-22 08:52"/>
       </div>
 

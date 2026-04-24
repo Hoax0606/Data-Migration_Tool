@@ -23,6 +23,8 @@ const App = () => {
   const [showNewSite, setShowNewSite] = React.useState(false);
   const [overlay, setOverlay] = React.useState(null); // 'profile' | 'help' | 'about' | 'signout' | 'signedout' | null
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  const [settingsSection, setSettingsSection] = React.useState('general');
+  const [notifications, setNotifications] = React.useState(() => window.getNotifications?.() || []);
 
   /* VSCode-style sidebar toggle — Ctrl/Cmd+B */
   React.useEffect(() => {
@@ -45,9 +47,11 @@ const App = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  const snapshotCount = (window.getSnapshots?.(activeProject) || []).length;
   const tabs = [
     { k: 'dashboard', l: 'Dashboard', c: `${TABLES.length} tables` },
     { k: 'mapping',   l: 'Mapping', c: `${MAPPING.length} fields` },
+    { k: 'versions',  l: 'Versions', c: snapshotCount > 0 ? `${snapshotCount}` : '—' },
     { k: 'execution', l: 'Execution', c: 'live' },
     { k: 'artifacts', l: 'Artifacts', c: `${SCHEMA_DIFF.length * 5 + 1}` },
     { k: 'logs',      l: 'Log viewer', c: `${LOG_LINES.length}` },
@@ -138,7 +142,7 @@ const App = () => {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.1 }}>Solution settings</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 1 }}>
-                  preferences for migrate.console · applies across all sites
+                  preferences for ModernizeProData · applies across all sites
                 </div>
               </div>
             </div>
@@ -164,6 +168,20 @@ const App = () => {
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   maxWidth: 320, display: 'inline-block',
                 }}>{project.name.split('/').slice(-1)[0].trim()}</span>
+                  {project.phase && (() => {
+                    const ph = project.phase;
+                    const bg = ph === 'cutover' ? 'var(--red-50)' : ph === 'hypercare' ? 'var(--amber-50)' : ph === 'rehearsal' ? 'var(--navy-50)' : ph === 'sign-off' ? 'var(--green-50)' : 'var(--panel-2)';
+                    const bd = ph === 'cutover' ? 'var(--red)' : ph === 'hypercare' ? 'var(--amber)' : ph === 'rehearsal' ? 'var(--navy)' : ph === 'sign-off' ? 'var(--green)' : 'var(--border)';
+                    const fg = ph === 'cutover' ? 'var(--red)' : ph === 'hypercare' ? 'var(--amber)' : ph === 'rehearsal' ? 'var(--navy)' : ph === 'sign-off' ? 'var(--green)' : 'var(--text-3)';
+                    return (
+                      <span title={window.getPhaseDesc?.(ph) || ''} style={{
+                        padding: '1px 7px', fontSize: 10, fontWeight: 700,
+                        fontFamily: 'var(--mono)', borderRadius: 3,
+                        background: bg, color: fg, border: `1px solid ${bd}`,
+                        textTransform: 'uppercase', letterSpacing: 0.4,
+                      }}>{window.getPhaseLabel?.(ph) || ph}</span>
+                    );
+                  })()}
                 </div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
                   <span>{project.src}</span>
@@ -171,8 +189,10 @@ const App = () => {
                   <span>{project.tgt}</span>
                   <span style={{ color: 'var(--text-4)' }}>·</span>
                   <span>{project.tables} tables</span>
-                  <span style={{ color: 'var(--text-4)' }}>·</span>
-                  <span>run-2026-0421-0914</span>
+                  {(() => {
+                    const run = window.getActiveRun?.(project.id);
+                    return run ? <><span style={{ color: 'var(--text-4)' }}>·</span><span>{run.id}</span></> : null;
+                  })()}
                 </div>
               </div>
             </div>
@@ -180,6 +200,18 @@ const App = () => {
 
           <div style={{ flex: 1 }}/>
 
+          <NotificationBell
+            notifications={notifications}
+            onMarkRead={(id) => setNotifications(list => list.map(n => n.id === id ? { ...n, read: true } : n))}
+            onMarkAllRead={() => setNotifications(list => list.map(n => ({ ...n, read: true })))}
+            onClear={() => setNotifications([])}
+            onItemClick={(n) => {
+              if (n.projectId) setActiveProject(n.projectId);
+              if (n.link?.section) setSettingsSection(n.link.section);
+              if (n.link?.tab) setTab(n.link.tab);
+              if (view !== 'project') setView('project');
+            }}
+          />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>
             {['asis', 'tobe'].map(side => {
               const c = project.connections?.[side];
@@ -196,16 +228,20 @@ const App = () => {
                 c.status === 'stale' ? `Stale · last tested ${c.lastTestedAt}` :
                 'Not tested yet';
               return (
-                <button key={side} onClick={() => { if (view === 'project' && !project.isNew) setTab('settings'); }}
+                <button key={side} onClick={() => {
+                    if (view !== 'project') return;
+                    setSettingsSection(side === 'asis' ? 'source' : 'target');
+                    setTab('settings');
+                  }}
                   title={tooltip}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '2px 8px', background: 'var(--panel-2)',
                     border: '1px solid var(--border)', borderRadius: 10,
                     fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit',
-                    cursor: view === 'project' && !project.isNew ? 'pointer' : 'default',
+                    cursor: view === 'project' ? 'pointer' : 'default',
                   }}
-                  onMouseEnter={e => { if (view === 'project' && !project.isNew) e.currentTarget.style.background = 'var(--panel)'; }}
+                  onMouseEnter={e => { if (view === 'project') e.currentTarget.style.background = 'var(--panel)'; }}
                   onMouseLeave={e => e.currentTarget.style.background = 'var(--panel-2)'}
                 >
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
@@ -232,7 +268,7 @@ const App = () => {
               background: 'var(--panel)', cursor: 'pointer', fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--sans)',
             }}>← Back</button>
             <span style={{ color: 'var(--text-4)' }}>/</span>
-            <span>{view === 'sitesettings' ? (site?.name.toLowerCase().replace(/\s+/g,'-')) : 'migrate.console'}</span>
+            <span>{view === 'sitesettings' ? (site?.name.toLowerCase().replace(/\s+/g,'-')) : 'modernizeprodata'}</span>
             <span style={{ color: 'var(--text-4)' }}>/</span>
             <span style={{ color: 'var(--navy)', fontWeight: 600 }}>{view === 'sitesettings' ? 'site settings' : 'solution settings'}</span>
           </div>
@@ -311,10 +347,15 @@ const App = () => {
             : <>
                 {tab === 'dashboard' && <Dashboard tables={TABLES}/>}
                 {tab === 'mapping'   && <Mapping project={project}/>}
-                {tab === 'execution' && <Execution stages={STAGES}/>}
+                {tab === 'versions'  && <Versions project={project}/>}
+                {tab === 'execution' && <Execution stages={STAGES} project={project}
+                    onTabChange={setTab}
+                    onSettingsSection={setSettingsSection}/>}
                 {tab === 'artifacts' && <Artifacts tables={SCHEMA_DIFF} projectTables={TABLES}/>}
                 {tab === 'logs'      && <Logs lines={LOG_LINES}/>}
                 {tab === 'settings'  && <ProjectSettings project={project}
+                    section={settingsSection}
+                    onSectionChange={setSettingsSection}
                     onRename={(nn) => setProjects(list => list.map(x => x.id === project.id ? { ...x, name: nn } : x))}
                     onDuplicate={() => {
                       const copy = { ...project, id: 'p' + Date.now(), name: project.name + ' (copy)', status: 'waiting', isNew: true };

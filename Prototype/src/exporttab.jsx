@@ -382,7 +382,7 @@ const CoverSheet = ({ displayName, scope, project, allProjects, tableCount }) =>
       <tr><td style={rowNum}>3</td><td style={{...cell, fontWeight: 600}}>Document ID</td><td style={cell} colSpan="3">DDS-{slugify(displayName).toUpperCase()}-2026-04-21</td></tr>
       <tr><td style={rowNum}>4</td><td style={{...cell, fontWeight: 600}}>Version</td><td style={cell} colSpan="3">v4.12.0</td></tr>
       <tr><td style={rowNum}>5</td><td style={{...cell, fontWeight: 600}}>Issued</td><td style={cell} colSpan="3">2026-04-21 09:41 JST</td></tr>
-      <tr><td style={rowNum}>6</td><td style={{...cell, fontWeight: 600}}>Author</td><td style={cell} colSpan="3">Henry Oh · KS Info System</td></tr>
+      <tr><td style={rowNum}>6</td><td style={{...cell, fontWeight: 600}}>Author</td><td style={cell} colSpan="3">KS Info System</td></tr>
       <tr><td style={rowNum}>7</td><td style={{...cell, fontWeight: 600}}>Classification</td><td style={cell} colSpan="3">Internal · Migration program</td></tr>
       <tr><td style={rowNum}>8</td><td style={cell} colSpan="4"/></tr>
       <tr><td style={rowNum}>9</td><td style={{...cell, fontWeight: 600}} colSpan="4">Scope</td></tr>
@@ -545,7 +545,7 @@ const SummaryPreview = ({ scope, project, allProjects }) => {
           {displayName}
         </h1>
         <div style={{ fontSize: 12, color: '#4a5463', marginTop: 4, marginBottom: 20 }}>
-          2026-04-21 · Document DDS-{slugify(displayName).toUpperCase()}-2026-04-21 · Henry Oh (KS Info System)
+          2026-04-21 · Document DDS-{slugify(displayName).toUpperCase()}-2026-04-21 · KS Info System
         </div>
         <hr style={{ border: 'none', borderTop: '2px solid #1a2330', marginBottom: 18 }}/>
 

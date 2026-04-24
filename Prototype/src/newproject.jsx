@@ -57,7 +57,7 @@ const NewProjectModal = ({ onClose, onCreate }) => {
     validate: true,
     dryRun: true,
     parallel: 8,
-    steward: 'kenji.sato',
+    steward: '',
   });
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
 
@@ -196,9 +196,6 @@ const NewProjectModal = ({ onClose, onCreate }) => {
                     { id: 'dev', l: 'dev' }, { id: 'stg', l: 'stg' }, { id: 'prod', l: 'prod' },
                   ]}/>
                 </Field>
-                <Field k="Data steward">
-                  <Input value={f.steward} onChange={v => set('steward', v)} mono/>
-                </Field>
               </div>
             </Form>
           )}
@@ -292,7 +289,6 @@ const NewProjectModal = ({ onClose, onCreate }) => {
                   <div><span style={{ color: '#7a8aa6' }}># project</span></div>
                   <div><span style={{ color: '#8aa0bf' }}>name</span>    = {f.client} / {f.name || <span style={{ color: '#ffb4b4' }}>(required)</span>}</div>
                   <div><span style={{ color: '#8aa0bf' }}>env</span>     = {f.env}</div>
-                  <div><span style={{ color: '#8aa0bf' }}>steward</span> = {f.steward}</div>
                   <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># source</span></div>
                   <div><span style={{ color: '#8aa0bf' }}>kind</span>    = {SRC_KINDS.find(s => s.id === f.srcKind)?.label}</div>
                   <div><span style={{ color: '#8aa0bf' }}>host</span>    = {f.srcHost}{f.srcPath ? ':' + f.srcPath : ''}</div>

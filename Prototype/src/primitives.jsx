@@ -195,6 +195,7 @@ const Ic = {
   key:   () => <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="3" cy="6" r="2"/><path d="M5 6h4M7 6v2M9 6v1.5"/></svg>,
   dot:   () => <svg width="4" height="4" viewBox="0 0 4 4"><circle cx="2" cy="2" r="2" fill="currentColor"/></svg>,
   panel: () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1.5" y="2.5" width="11" height="9" rx="1"/><line x1="5" y1="2.5" x2="5" y2="11.5"/></svg>,
+  bell:  () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6a4 4 0 0 1 8 0v2.5l1 2H2l1-2V6z"/><path d="M6 12a1 1 0 0 0 2 0"/></svg>,
   spinner: () => <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ animation: 'mig-spin .9s linear infinite' }}><path d="M6 1a5 5 0 1 1 -4.5 2.8"/></svg>,
 };
 

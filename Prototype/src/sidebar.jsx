@@ -13,10 +13,14 @@ const Sidebar = ({
   const [siteOpen, setSiteOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
 
+  /* Group projects by lifecycle phase, not the legacy running/waiting/done
+     status — closer to how teams actually talk about migration state. */
+  const phaseOf = (p) => p.phase || (p.status === 'running' ? 'rehearsal' : p.status === 'waiting' ? 'planning' : 'done');
+  const inSet = (arr) => (p) => arr.includes(phaseOf(p));
   const groups = [
-    { key: 'running', label: 'Running', items: projects.filter(p => p.status === 'running') },
-    { key: 'waiting', label: 'Waiting', items: projects.filter(p => p.status === 'waiting') },
-    { key: 'done',    label: 'Completed', items: projects.filter(p => p.status === 'done') },
+    { key: 'active',   label: 'In progress',        items: projects.filter(inSet(['planning', 'analysis', 'rehearsal', 'sign-off'])) },
+    { key: 'cutover',  label: 'Cutover · Hypercare', items: projects.filter(inSet(['cutover', 'hypercare'])) },
+    { key: 'done',     label: 'Completed',           items: projects.filter(inSet(['done'])) },
   ];
 
   React.useEffect(() => {
@@ -57,13 +61,8 @@ const Sidebar = ({
         display: 'flex', alignItems: 'center', gap: 9,
         borderBottom: '1px solid var(--border)',
       }}>
-        <div style={{
-          width: 16, height: 16, borderRadius: 3,
-          background: 'var(--navy)',
-          display: 'grid', placeItems: 'center',
-          color: '#fff', fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 700,
-        }}>M</div>
-        <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.1 }}>migrate<span style={{ color: 'var(--text-3)' }}>.console</span></div>
+        <img src="icon/mpd.png" alt="ModernizeProData" style={{ width: 18, height: 18, display: 'block', flexShrink: 0 }}/>
+        <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.1 }}>Modernize<span style={{ color: 'var(--text-3)' }}>ProData</span></div>
       </div>
 
       {/* Site switcher dropdown */}
@@ -297,6 +296,13 @@ const Sidebar = ({
                     fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)',
                     display: 'flex', gap: 6, alignItems: 'center',
                   }}>
+                    {p.phase && (
+                      <span style={{
+                        padding: '0 4px', borderRadius: 2, fontSize: 9, fontWeight: 600,
+                        background: 'var(--panel-2)', color: 'var(--text-2)',
+                        border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: 0.3,
+                      }}>{(window.getPhaseLabel?.(p.phase) || p.phase)}</span>
+                    )}
                     <span>{p.tables} tables</span>
                     <span style={{ color: 'var(--text-4)' }}>·</span>
                     <span>{p.updated}</span>
@@ -357,7 +363,7 @@ const Sidebar = ({
               { k: 'solution', l: 'Solution settings',   icon: '⚙',  active: solutionActive },
               { kind: 'divider' },
               { k: 'help',     l: 'Help & shortcuts',    icon: '?' },
-              { k: 'about',    l: 'About migrate.console', icon: 'ⓘ' },
+              { k: 'about',    l: 'About ModernizeProData', icon: 'ⓘ' },
               { kind: 'divider' },
               { k: 'signout',  l: 'Sign out',            icon: '⎋' },
             ].map((it, i) => it.kind === 'divider' ? (

@@ -14,7 +14,7 @@ const SolutionSettings = ({ onBack, theme, setTheme }) => {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: -0.1 }}>Solution settings</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-              Preferences for migrate.console itself. Applies across all sites.
+              Preferences for ModernizeProData itself. Applies across all sites.
             </div>
           </div>
           <Btn kind="secondary" size="sm" onClick={onBack}>Close</Btn>
@@ -49,11 +49,32 @@ const SolutionSettings = ({ onBack, theme, setTheme }) => {
           <SSRow label="Errors"><SSToggle on={notif.error} onChange={v => setNotif(n => ({ ...n, error: v }))} label="Notify on migration errors (severity ≥ error)"/></SSRow>
         </SSCard>
 
-        <SSCard title="About">
-          <SSRow label="Product"><SSInput value="KS migrate.console" readOnly/></SSRow>
-          <SSRow label="Version"><SSInput value="v4.12.0 (build 2026.04.18-a9f3c1)" readOnly mono/></SSRow>
-          <SSRow label="Vendor"><SSInput value="KS Info System Co., Ltd." readOnly/></SSRow>
-          <SSRow label="Support"><SSInput value="support@ksinfo.co.kr · +82 2 123 4567" readOnly mono/></SSRow>
+        <SSCard title="External integrations" desc="실제 run 트리거는 외부 스케줄러가 CLI/API 로 호출합니다. 폐쇄망 기존 인프라 연동 지점.">
+          <SSRow label="Scheduler" hint="어느 스케줄러가 이 툴의 run 을 트리거하는지">
+            <select defaultValue="control-m" style={{
+              height: 24, padding: '0 8px',
+              border: '1px solid var(--border)', borderRadius: 3,
+              background: 'var(--panel)', fontSize: 11.5, color: 'var(--text)', fontFamily: 'var(--mono)',
+            }}>
+              <option value="control-m">Control-M</option>
+              <option value="airflow">Apache Airflow</option>
+              <option value="jenkins">Jenkins</option>
+              <option value="cron">Linux cron</option>
+              <option value="manual">Manual only</option>
+            </select>
+          </SSRow>
+          <SSRow label="CLI path" hint="스케줄러가 호출할 CLI 바이너리 위치">
+            <SSInput value="/opt/migrate/bin/migrate" mono readOnly/>
+          </SSRow>
+          <SSRow label="API endpoint" hint="대안 — HTTP 로 run 트리거">
+            <SSInput value="https://migrate.kdb.internal/api/v1/runs" mono readOnly/>
+          </SSRow>
+          <SSRow label="API token" hint="스케줄러가 제시할 인증 토큰 (rotate 권장)">
+            <SSInput value="mig_••••••••••••••••_a9f3" mono readOnly/>
+          </SSRow>
+          <SSRow label="Syslog forwarding" hint="run 이벤트를 사내 SIEM 으로 보낼지">
+            <SSInput value="syslog.kdb.internal:514 · facility local4" mono readOnly/>
+          </SSRow>
         </SSCard>
 
         <div style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 6 }}>
