@@ -69,10 +69,13 @@ const TypeBadge = ({ children }) => (
 
 const RuleTag = ({ rule }) => {
   const cfg = {
-    auto:  { label: 'passthrough', bg: 'var(--panel-2)', fg: 'var(--text-2)', bd: 'var(--border)' },
-    rule:  { label: 'transform',   bg: 'var(--navy-50)', fg: 'var(--navy)',   bd: 'var(--navy)' },
-    skip:  { label: 'drop',        bg: 'var(--panel-2)', fg: 'var(--text-3)', bd: 'var(--border)' },
-    added: { label: 'added',       bg: 'var(--green-50)', fg: 'var(--green)', bd: 'var(--green)' },
+    auto:    { label: 'passthrough', bg: 'var(--panel-2)', fg: 'var(--text-2)', bd: 'var(--border)' },
+    rule:    { label: 'transform',   bg: 'var(--navy-50)', fg: 'var(--navy)',   bd: 'var(--navy)' },
+    skip:    { label: 'drop',        bg: 'var(--panel-2)', fg: 'var(--text-3)', bd: 'var(--border)' },
+    added:   { label: 'added',       bg: 'var(--green-50)', fg: 'var(--green)', bd: 'var(--green)' },
+    null:    { label: 'null',        bg: 'var(--gray-50)', fg: 'var(--text-3)', bd: 'var(--border-strong)' },
+    default: { label: 'default',     bg: 'var(--gray-50)', fg: 'var(--text-3)', bd: 'var(--border-strong)' },
+    unmapped:{ label: 'unmapped',    bg: 'var(--panel-2)', fg: 'var(--text-3)', bd: 'var(--border-strong)' },
   }[rule] || { label: rule, bg: '#eee', fg: '#555', bd: '#ddd' };
   return (
     <span style={{

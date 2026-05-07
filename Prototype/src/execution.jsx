@@ -1,6 +1,6 @@
 /* Execution & monitoring tab — run controls, progress, pre-flight checks, quarantine viewer */
 
-const Execution = ({ stages, project, onTabChange, onSettingsSection }) => {
+const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTarget }) => {
   const [tick, setTick] = React.useState(0);
   const [running, setRunning] = React.useState(true);
 
@@ -27,6 +27,7 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection }) => {
   const navigateToFix = (fix) => {
     if (!fix || !onTabChange) return;
     if (fix.section && onSettingsSection) onSettingsSection(fix.section);
+    if (fix.target && onSetFixTarget) onSetFixTarget(fix.target);
     onTabChange(fix.tab);
   };
 
@@ -368,13 +369,13 @@ const QuarantineViewer = ({ entries }) => {
 };
 
 /* ─── Run header ─────────────────────────────────────────────────
-   Shows the active run (if any) plus mode badge (rehearsal/cutover),
-   triggeredBy (control-m / manual / jenkins etc.) and CLI hint toggle. */
+   Shows the active run (if any) plus mode badge (rehearsal/cutover) and
+   triggeredBy (scheduler / manual). The internal scheduler is the canonical
+   trigger path — external CLI was removed. */
 
 const RunHeader = ({ project, running, onToggleRun }) => {
   const run = window.getActiveRun ? window.getActiveRun(project?.id) : null;
   const history = window.getRuns ? window.getRuns(project?.id) : [];
-  const [cliOpen, setCliOpen] = React.useState(false);
 
   if (!run) {
     const lastRun = history[0];
@@ -392,8 +393,6 @@ const RunHeader = ({ project, running, onToggleRun }) => {
               : <>run 이력 없음 — 분석/설계 단계입니다</>}
           </div>
         </div>
-        <Btn kind="secondary" size="sm" icon={<Ic.ext/>} onClick={() => setCliOpen(o => !o)}>CLI</Btn>
-        {cliOpen && <CliHintOverlay projectId={project?.id} onClose={() => setCliOpen(false)}/>}
       </div>
     );
   }
@@ -432,60 +431,8 @@ const RunHeader = ({ project, running, onToggleRun }) => {
           {run.triggeredBy?.source && <span> · {run.triggeredBy.source}</span>}
         </div>
       </div>
-      <Btn kind="ghost" size="sm" icon={<Ic.ext/>} onClick={() => setCliOpen(o => !o)}>CLI</Btn>
       <Btn kind="secondary" size="md" icon={running ? <Ic.pause/> : <Ic.play/>} onClick={onToggleRun}>{running ? 'Pause' : 'Resume'}</Btn>
       <Btn kind="danger" size="md" icon={<Ic.stop/>}>Abort</Btn>
-      {cliOpen && <CliHintOverlay projectId={project?.id} onClose={() => setCliOpen(false)}/>}
-    </div>
-  );
-};
-
-/* Small overlay anchored under the CLI button — shows the external command
-   that a scheduler (Control-M / Jenkins / cron) would invoke. */
-const CliHintOverlay = ({ projectId, onClose }) => {
-  const ref = React.useRef();
-  React.useEffect(() => {
-    const close = (e) => { if (!ref.current?.contains(e.target)) onClose(); };
-    const esc = (e) => { if (e.key === 'Escape') onClose(); };
-    setTimeout(() => window.addEventListener('mousedown', close), 0);
-    window.addEventListener('keydown', esc);
-    return () => {
-      window.removeEventListener('mousedown', close);
-      window.removeEventListener('keydown', esc);
-    };
-  }, []);
-  const pid = projectId || 'p1';
-  return (
-    <div ref={ref} onClick={e => e.stopPropagation()} style={{
-      position: 'absolute', right: 18, top: 68,
-      width: 520,
-      background: 'var(--panel)',
-      border: '1px solid var(--border-strong)', borderRadius: 6,
-      boxShadow: '0 12px 32px rgba(20,30,50,.18)',
-      zIndex: 100, padding: '12px 14px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 600 }}>External trigger · CLI</div>
-        <div style={{ flex: 1 }}/>
-        <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', padding: 2 }}><Ic.x/></button>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 8, lineHeight: 1.5 }}>
-        이 툴은 자체 스케줄러가 없습니다. 외부 스케줄러(Control-M / Jenkins / Airflow / cron)에 아래 명령을 등록하세요.
-      </div>
-      <div style={{
-        padding: 10, background: '#0e1a2b', color: '#cad7e8',
-        fontFamily: 'var(--mono)', fontSize: 11.5, borderRadius: 3, lineHeight: 1.7,
-      }}>
-        <div><span style={{ color: '#7a8aa6' }}># 매일 밤 rehearsal (test target)</span></div>
-        <div><span style={{ color: '#e8b86f' }}>migrate</span> run --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --mode <span style={{ color: '#9fd9b3' }}>rehearsal</span> --dry-run</div>
-        <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># 컷오버 (prod target · 승인된 스냅샷 필요)</span></div>
-        <div><span style={{ color: '#e8b86f' }}>migrate</span> run --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --mode <span style={{ color: '#9fd9b3' }}>cutover</span></div>
-        <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># rollback (cutover 실패 시)</span></div>
-        <div><span style={{ color: '#e8b86f' }}>migrate</span> rollback --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --to <span style={{ color: '#9fd9b3' }}>pre-cutover</span></div>
-      </div>
-      <div style={{ fontSize: 10.5, color: 'var(--text-4)', marginTop: 8, fontFamily: 'var(--mono)' }}>
-        CLI 경로 · API endpoint는 Solution Settings › External integrations에서 설정
-      </div>
     </div>
   );
 };

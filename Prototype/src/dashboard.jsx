@@ -1,69 +1,98 @@
-/* Dashboard tab — table-level migration status */
+/* Dashboard — Migration Readiness.
+   Shows per-TO-BE-table mapping/approval state at a glance, NOT run progress
+   (run progress lives in the Execution tab). Answers: "is the mapping done?
+   what's blocking the next run?" */
 
-const Stat = ({ label, value, sub, tone }) => (
-  <div style={{
-    flex: 1,
-    padding: '10px 14px',
-    borderRight: '1px solid var(--border)',
-  }}>
-    <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>{label}</div>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-      <div style={{ fontSize: 22, fontWeight: 600, fontFamily: 'var(--mono)', color: tone === 'err' ? 'var(--red)' : tone === 'warn' ? 'var(--amber)' : tone === 'ok' ? 'var(--green)' : 'var(--text)', letterSpacing: -0.3 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>{sub}</div>}
-    </div>
-  </div>
-);
-
-const Dashboard = ({ tables }) => {
-  const [q, setQ] = React.useState('');
+const Dashboard = ({ project, onTabChange }) => {
   const [filter, setFilter] = React.useState('all');
   const [sortKey, setSortKey] = React.useState('name');
   const [sortDir, setSortDir] = React.useState('asc');
-  const [sel, setSel] = React.useState(new Set());
 
-  const totals = React.useMemo(() => {
-    const total = tables.reduce((a, t) => a + t.rows, 0);
-    const done = tables.reduce((a, t) => a + t.done, 0);
-    const ok = tables.filter(t => t.status === 'ok').length;
-    const running = tables.filter(t => t.status === 'running' || t.status === 'warn').length;
-    const errs = tables.filter(t => t.status === 'blocked' || t.status === 'warn').length;
-    return { total, done, pct: (done / total) * 100, ok, running, errs, count: tables.length };
-  }, [tables]);
+  const { rows, counts, lastRun, latestSnapshot } = React.useMemo(() => {
+    const tobe = window.getTobeInventory?.() || [];
+    const snapshots = window.getSnapshots?.(project?.id) || [];
+    const latestApproved = [...snapshots].reverse().find(s => s.status === 'approved');
+    const latestPending  = [...snapshots].reverse().find(s => s.status === 'pending');
+    const latest = snapshots[snapshots.length - 1];
+    const lr = (window.getRuns?.(project?.id) || [])[0];
 
-  let rows = tables.filter(t =>
-    (!q || t.name.toLowerCase().includes(q.toLowerCase()) || t.schema.toLowerCase().includes(q.toLowerCase()))
-    && (filter === 'all' || t.status === filter || (filter === 'issues' && (t.status === 'blocked' || t.status === 'warn')))
-  );
-  rows = [...rows].sort((a, b) => {
-    const va = a[sortKey], vb = b[sortKey];
-    const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb));
-    return sortDir === 'asc' ? cmp : -cmp;
-  });
+    const rs = tobe.map(t => {
+      const mappings = t.internalName ? (window.getColumnMappings?.(t.internalName) || []) : [];
+      const errs     = mappings.filter(m => m.status === 'err').length;
+      const warns    = mappings.filter(m => m.status === 'warn').length;
+      const skips    = mappings.filter(m => m.rule === 'skip').length;
+      const unmapped = mappings.filter(m => m.rule === 'unmapped').length;
+      const added    = mappings.filter(m => m.rule === 'added').length;
+      /* coverage 분모는 "사용자가 매핑해야 하는 컬럼"만 — added(신규, default로 자동
+         채움)와 skip(드롭)은 작업 대상이 아니므로 분모/분자 모두에서 제외. */
+      const matchable = mappings.filter(m => m.rule !== 'skip' && m.rule !== 'added');
+      const total    = matchable.length;
+      const mappedOk = matchable.filter(m => m.status === 'ok').length;
+      const unbound  = !t.internalName || (t.sources?.length === 0);
 
-  const toggleSel = id => {
-    const n = new Set(sel);
-    n.has(id) ? n.delete(id) : n.add(id);
-    setSel(n);
-  };
+      let readiness;
+      if (unbound) readiness = 'unbound';
+      else if (errs > 0) readiness = 'review';
+      else if (unmapped > 0) readiness = 'review';
+      else if (!latestApproved) readiness = 'review';
+      else if (warns > 0) readiness = 'review';
+      else readiness = 'ready';
+
+      return {
+        name: t.name,
+        tableShort: t.tableShort,
+        internalName: t.internalName,
+        sources: t.sources || [],
+        compositionKind: t.compositionKind,
+        mappedOk, total, errs, warns, skips, unmapped,
+        coverage: total > 0 ? mappedOk / total : 0,
+        approvalLabel: latestApproved ? `v${latestApproved.version} ✓`
+          : latestPending ? `v${latestPending.version} pending`
+          : '—',
+        approvalState: latestApproved ? 'approved' : latestPending ? 'pending' : 'none',
+        readiness,
+        unbound,
+      };
+    });
+    return {
+      rows: rs,
+      counts: {
+        total: rs.length,
+        ready: rs.filter(r => r.readiness === 'ready').length,
+        review: rs.filter(r => r.readiness === 'review').length,
+        unbound: rs.filter(r => r.readiness === 'unbound').length,
+        approved: latestApproved ? 1 : 0,
+      },
+      lastRun: lr,
+      latestSnapshot: latest,
+    };
+  }, [project]);
+
+  const filtered = rows
+    .filter(r =>
+      filter === 'all' ? true
+      : filter === 'unbound' ? r.readiness === 'unbound'
+      : filter === 'review' ? r.readiness === 'review'
+      : filter === 'ready' ? r.readiness === 'ready'
+      : filter === 'partial' ? (r.errs > 0 || r.warns > 0 || r.unmapped > 0) && !r.unbound
+      : true
+    )
+    .sort((a, b) => {
+      const va = a[sortKey], vb = b[sortKey];
+      const cmp = typeof va === 'number' ? va - vb : String(va ?? '').localeCompare(String(vb ?? ''));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
 
   const Header = ({ k, w, label, align = 'left' }) => (
     <th onClick={() => {
       if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
       else { setSortKey(k); setSortDir('asc'); }
-    }}
-    style={{
-      width: w,
-      textAlign: align,
-      padding: '6px 10px',
-      fontWeight: 500,
-      color: 'var(--text-3)',
-      fontSize: 11,
-      textTransform: 'uppercase',
-      letterSpacing: 0.6,
+    }} style={{
+      width: w, textAlign: align, padding: '6px 10px',
+      fontWeight: 500, color: 'var(--text-3)', fontSize: 11,
+      textTransform: 'uppercase', letterSpacing: 0.6,
       borderBottom: '1px solid var(--border)',
-      background: 'var(--panel-2)',
-      cursor: 'pointer',
-      userSelect: 'none',
+      background: 'var(--panel-2)', cursor: 'pointer', userSelect: 'none',
       position: 'sticky', top: 0,
     }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -75,176 +104,176 @@ const Dashboard = ({ tables }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Summary strip */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--panel)',
-      }}>
-        <Stat label="Tables" value={totals.count} sub={`${totals.ok} complete`}/>
-        <Stat label="Rows migrated" value={`${(totals.done/1e6).toFixed(1)}M`} sub={`of ${(totals.total/1e6).toFixed(1)}M`}/>
-        <Stat label="Overall progress" value={fmtPct(totals.pct)} tone="ok"/>
-        <Stat label="In progress" value={totals.running} sub="active" tone="warn"/>
-        <Stat label="Issues" value={totals.errs} sub={totals.errs > 0 ? 'attention' : 'none'} tone={totals.errs > 0 ? 'err' : 'ok'}/>
+      {/* KPI strip */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
+        <DStat label="TO-BE tables" value={counts.total}/>
+        <DStat label="Ready"   value={counts.ready}   tone="ok"   sub="all checks pass"/>
+        <DStat label="Review"  value={counts.review}  tone="warn" sub="errs / pending approval"/>
+        <DStat label="Unbound" value={counts.unbound} tone="err"  sub="no source assigned"/>
+        <DStat label="Snapshot" value={latestSnapshot ? `v${latestSnapshot.version}` : '—'} sub={latestSnapshot ? latestSnapshot.status : 'no snapshot yet'} tone={latestSnapshot?.status === 'approved' ? 'ok' : latestSnapshot?.status === 'pending' ? 'warn' : 'idle'}/>
+        <DStat label="Last run" value={lastRun ? lastRun.result : '—'} sub={lastRun ? lastRun.startedAt.split(' ')[0] : 'no run yet'} tone={lastRun?.result === 'ok' ? 'ok' : lastRun?.result === 'warn' ? 'warn' : lastRun?.result === 'running' ? 'warn' : 'idle'}/>
       </div>
 
-      {/* Toolbar */}
+      {/* Filter chips */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 14px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--panel)',
       }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          height: 26, padding: '0 8px', minWidth: 260,
-          border: '1px solid var(--border)', borderRadius: 4,
-          background: 'var(--panel-2)',
-          color: 'var(--text-3)',
-        }}>
-          <Ic.search/>
-          <input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="Filter tables or schemas…"
-            style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: 'var(--text)', fontFamily: 'var(--mono)' }}
-          />
-        </div>
-
-        <div style={{
-          display: 'flex', height: 26,
-          border: '1px solid var(--border)', borderRadius: 4,
-          overflow: 'hidden',
-          background: 'var(--panel)',
-        }}>
+        <div style={{ display: 'flex', height: 26, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: 'var(--panel)' }}>
           {[
-            { k: 'all', l: `All` },
-            { k: 'running', l: 'Running' },
-            { k: 'ok', l: 'Complete' },
-            { k: 'queued', l: 'Queued' },
-            { k: 'issues', l: 'Issues' },
-          ].map((f, i) => (
-            <button key={f.k} onClick={() => setFilter(f.k)} style={{
-              padding: '0 10px',
-              border: 'none',
+            ['all', 'All', counts.total],
+            ['ready', 'Ready', counts.ready],
+            ['review', 'Review', counts.review],
+            ['partial', 'Partial', rows.filter(r => (r.errs > 0 || r.warns > 0) && !r.unbound).length],
+            ['unbound', 'Unbound', counts.unbound],
+          ].map(([k, l, n], i) => (
+            <button key={k} onClick={() => setFilter(k)} style={{
+              padding: '0 10px', border: 'none',
               borderLeft: i ? '1px solid var(--border)' : 'none',
-              background: filter === f.k ? 'var(--navy-50)' : 'transparent',
-              color: filter === f.k ? 'var(--navy)' : 'var(--text-2)',
-              fontWeight: filter === f.k ? 600 : 500,
-              cursor: 'pointer',
-              fontSize: 12,
-            }}>{f.l}</button>
+              background: filter === k ? 'var(--navy-50)' : 'transparent',
+              color: filter === k ? 'var(--navy)' : 'var(--text-2)',
+              fontWeight: filter === k ? 600 : 500,
+              cursor: 'pointer', fontSize: 12,
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+            }}>{l} <span style={{ fontSize: 10, color: 'var(--text-4)' }}>{n}</span></button>
           ))}
         </div>
-
         <div style={{ flex: 1 }}/>
-        {sel.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)' }}>
-            <span style={{ fontFamily: 'var(--mono)' }}>{sel.size} selected</span>
-            <Btn kind="secondary" size="sm" icon={<Ic.play/>}>Run</Btn>
-            <Btn kind="danger" size="sm" onClick={() => setSel(new Set())}>Reset</Btn>
-          </div>
-        )}
-        <Btn kind="primary" size="sm" icon={<Ic.play/>}>Run all</Btn>
-        <Btn kind="secondary" size="sm">Abort run</Btn>
+        <Btn kind="secondary" size="sm" onClick={() => onTabChange?.('versions')}>Open Versions</Btn>
+        <Btn kind="primary" size="sm" onClick={() => onTabChange?.('execution')}>Go to Execution</Btn>
       </div>
 
       {/* Table */}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--panel)' }}>
-        <table style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: 13,
-        }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>
             <tr>
-              <th style={{ width: 28, padding: '6px 10px', background: 'var(--panel-2)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0 }}>
-                <input type="checkbox"
-                  checked={sel.size === rows.length && rows.length > 0}
-                  onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.name)) : new Set())}
-                  style={{ margin: 0 }}
-                />
-              </th>
-              <Header k="status" w={28} label=""/>
-              <Header k="name" label="Table"/>
-              <Header k="schema" w={120} label="Schema"/>
-              <Header k="rows" w={130} label="Rows" align="right"/>
-              <Header k="done" w={130} label="Migrated" align="right"/>
-              <Header k="pct" w={220} label="Progress"/>
-              <Header k="rule" w={70} label="Rules" align="right"/>
-              <Header k="issues" w={70} label="Issues" align="right"/>
-              <Header k="status" w={100} label="Status"/>
-              <Header k="updated" w={110} label="Last update"/>
-              <th style={{ width: 40, padding: '6px 10px', background: 'var(--panel-2)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0 }}></th>
+              <Header k="readiness" w={28} label=""/>
+              <Header k="name" label="TO-BE table"/>
+              <Header k="compositionKind" w={150} label="AS-IS source(s)"/>
+              <Header k="coverage" w={220} label="Column coverage"/>
+              <Header k="errs" w={70} label="Issues" align="right"/>
+              <Header k="approvalState" w={150} label="Approval"/>
+              <Header k="readiness" w={110} label="Readiness"/>
+              <th style={{ width: 30, padding: '6px 10px', background: 'var(--panel-2)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0 }}/>
             </tr>
           </thead>
           <tbody>
-            {rows.map((t, i) => {
-              const isSel = sel.has(t.name);
-              return (
-                <tr key={t.name}
-                  className="mig-row"
-                  style={{
-                    background: isSel ? 'var(--navy-50)' : (i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)'),
-                    borderBottom: '1px solid var(--border)',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--panel-2)'; }}
-                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)'; }}
-                >
-                  <td className="mig-td" onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" checked={isSel} onChange={() => toggleSel(t.name)} style={{ margin: 0 }}/>
-                  </td>
-                  <td className="mig-td">
-                    <StatusDot tone={t.status}/>
-                  </td>
-                  <td className="mig-td" style={{ fontFamily: 'var(--mono)', fontWeight: 500, color: 'var(--text)' }}>
-                    {t.name}
-                  </td>
-                  <td className="mig-td" style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>{t.schema}</td>
-                  <td className="mig-td" style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-2)' }}>{fmtN(t.rows)}</td>
-                  <td className="mig-td" style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-2)' }}>{fmtN(t.done)}</td>
-                  <td className="mig-td">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {filtered.map((r, i) => (
+              <tr key={r.name}
+                onClick={() => onTabChange?.('mapping')}
+                style={{
+                  background: i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)',
+                  borderBottom: '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--panel-2)'}
+                onMouseLeave={e => e.currentTarget.style.background = i % 2 === 1 ? 'var(--zebra)' : 'var(--panel)'}
+              >
+                <td className="mig-td"><ReadinessDot kind={r.readiness}/></td>
+                <td className="mig-td" style={{ fontFamily: 'var(--mono)', fontWeight: 500 }}>{r.name}</td>
+                <td className="mig-td" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+                  {r.unbound ? <span style={{ color: 'var(--text-4)', fontStyle: 'italic' }}>(no source)</span>
+                    : r.sources.map((s, si) => (
+                      <React.Fragment key={s.alias || si}>
+                        {si > 0 && <span style={{ color: 'var(--text-4)' }}> {r.compositionKind === 'union' ? '∪' : '⋈'} </span>}
+                        <span style={{ color: 'var(--text-2)' }}>{s.table?.split('.').pop() || s.table}</span>
+                      </React.Fragment>
+                    ))
+                  }
+                </td>
+                <td className="mig-td">
+                  {r.unbound ? (
+                    <span style={{ color: 'var(--text-4)', fontSize: 11, fontFamily: 'var(--mono)' }}>—</span>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ flex: 1 }}>
-                        <ProgressBar pct={t.pct} tone={t.status === 'ok' ? 'ok' : t.status === 'blocked' ? 'err' : t.status === 'warn' ? 'warn' : t.status === 'queued' ? 'idle' : 'running'}/>
+                        <ProgressBar pct={r.coverage * 100} tone={r.errs > 0 ? 'err' : r.warns > 0 || r.unmapped > 0 ? 'warn' : 'ok'}/>
                       </div>
-                      <div style={{ width: 42, textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
-                        {t.pct === 0 ? '—' : t.pct === 100 ? '100%' : t.pct.toFixed(1) + '%'}
-                      </div>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-2)', minWidth: 96, textAlign: 'right' }}>
+                        {r.mappedOk}/{r.total}{r.unmapped ? ` · ${r.unmapped} open` : ''}{r.skips ? ` · ${r.skips}↓` : ''}
+                      </span>
                     </div>
-                  </td>
-                  <td className="mig-td" style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-3)' }}>{t.rule}</td>
-                  <td className="mig-td" style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12, color: t.issues ? 'var(--red)' : 'var(--text-4)', fontWeight: t.issues ? 600 : 400 }}>
-                    {t.issues || '—'}
-                  </td>
-                  <td className="mig-td">
-                    <StatusBadge tone={t.status}>{t.status}</StatusBadge>
-                  </td>
-                  <td className="mig-td" style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-3)' }}>{t.updated}</td>
-                  <td className="mig-td" style={{ textAlign: 'right', color: 'var(--text-3)' }}>
-                    <button style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 2 }}><Ic.chevR/></button>
-                  </td>
-                </tr>
-              );
-            })}
+                  )}
+                </td>
+                <td className="mig-td" style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
+                  {r.errs > 0 && <span style={{ color: 'var(--red)', fontWeight: 600 }}>{r.errs} err</span>}
+                  {r.errs > 0 && (r.warns > 0 || r.unmapped > 0) && <span style={{ color: 'var(--text-4)' }}> · </span>}
+                  {r.warns > 0 && <span style={{ color: 'var(--amber)' }}>{r.warns} warn</span>}
+                  {r.warns > 0 && r.unmapped > 0 && <span style={{ color: 'var(--text-4)' }}> · </span>}
+                  {r.unmapped > 0 && <span style={{ color: 'var(--text-3)' }}>{r.unmapped} unmapped</span>}
+                  {r.errs === 0 && r.warns === 0 && r.unmapped === 0 && <span style={{ color: 'var(--text-4)' }}>—</span>}
+                </td>
+                <td className="mig-td">
+                  <ApprovalChip state={r.approvalState} label={r.approvalLabel} onClick={(e) => { e.stopPropagation(); onTabChange?.('versions'); }}/>
+                </td>
+                <td className="mig-td">
+                  <ReadinessBadge kind={r.readiness}/>
+                </td>
+                <td className="mig-td" style={{ textAlign: 'right', color: 'var(--text-3)' }}>
+                  <Ic.chevR/>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan="8" style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+                  no tables match this filter
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Footer status */}
+      {/* Footer */}
       <div style={{
-        height: 24,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 14px',
-        borderTop: '1px solid var(--border)',
+        height: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 14px', borderTop: '1px solid var(--border)',
         background: 'var(--panel-2)',
         fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text-3)',
       }}>
-        <span>{rows.length} of {tables.length} tables · sort: {sortKey} {sortDir}</span>
-        <span>auto-refresh 5s · last 09:41:08 JST</span>
+        <span>{filtered.length} of {rows.length} tables · sort: {sortKey} {sortDir}</span>
+        <span>click a row → Mapping tab · click approval chip → Versions tab</span>
       </div>
     </div>
+  );
+};
+
+const DStat = ({ label, value, sub, tone }) => (
+  <div style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
+    <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>{label}</div>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+      <div style={{
+        fontSize: 22, fontWeight: 600, fontFamily: 'var(--mono)', letterSpacing: -0.3,
+        color: tone === 'err' ? 'var(--red)' : tone === 'warn' ? 'var(--amber)' : tone === 'ok' ? 'var(--green)' : tone === 'idle' ? 'var(--text-3)' : 'var(--text)',
+      }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>{sub}</div>}
+    </div>
+  </div>
+);
+
+const ReadinessDot = ({ kind }) => {
+  const c = kind === 'ready' ? 'var(--green)' : kind === 'unbound' ? 'var(--red)' : 'var(--amber)';
+  return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: c }}/>;
+};
+
+const ReadinessBadge = ({ kind }) => {
+  const tone = kind === 'ready' ? 'ok' : kind === 'unbound' ? 'err' : 'warn';
+  const label = kind === 'ready' ? 'ready' : kind === 'unbound' ? 'unbound' : 'review';
+  return <StatusBadge tone={tone}>{label}</StatusBadge>;
+};
+
+const ApprovalChip = ({ state, label, onClick }) => {
+  const tone = state === 'approved' ? 'ok' : state === 'pending' ? 'warn' : 'idle';
+  return (
+    <button onClick={onClick} style={{
+      border: 'none', background: 'transparent', padding: 0, cursor: 'pointer',
+    }}>
+      <StatusBadge tone={tone}>{label}</StatusBadge>
+    </button>
   );
 };
 

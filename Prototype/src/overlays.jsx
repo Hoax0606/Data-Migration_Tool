@@ -1,6 +1,6 @@
 /* Overlay screens: Sign-out, Help & shortcuts, About ModernizeProData */
 
-const OverlayShell = ({ title, desc, onClose, children, wide }) => (
+const OverlayShell = ({ title, desc, onClose, children, wide, width }) => (
   <div style={{
     position: 'fixed', inset: 0, background: 'rgba(10,18,16,0.55)',
     display: 'grid', placeItems: 'center', zIndex: 2000,
@@ -9,7 +9,8 @@ const OverlayShell = ({ title, desc, onClose, children, wide }) => (
     <div
       onClick={e => e.stopPropagation()}
       style={{
-        width: wide ? 640 : 440,
+        width: width || (wide ? 640 : 440),
+        maxWidth: '94vw',
         maxHeight: '86vh', overflow: 'auto',
         background: 'var(--panel)',
         border: '1px solid var(--border-strong)',

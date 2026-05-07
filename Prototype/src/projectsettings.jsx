@@ -574,8 +574,19 @@ const PSSchedule = ({ project }) => {
         </div>
         {extTriggerOpen && (
           <div style={{ padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 10 }}>
-              내장 스케줄러를 끄고 외부 스케줄러에 아래 명령을 등록하면 동일하게 동작합니다. 둘 다 켜면 중복 실행 위험.
+            {/* Hard prerequisite — explain where to enable + what happens if not */}
+            <div style={{
+              padding: 10, marginBottom: 10,
+              border: '1px solid var(--amber)', background: 'var(--amber-50)',
+              borderRadius: 3, fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6,
+            }}>
+              <div style={{ fontWeight: 600, color: 'var(--amber)', marginBottom: 4 }}>⚠ 사전 조건 — Solution Settings 에서 활성화 필요</div>
+              External trigger 는 솔루션 전역 기능이라 <b>Solution Settings › External integrations</b> 에서 먼저 토글을 켜야 동작합니다. 켜지 않으면 CLI / API endpoint 가 응답하지 않습니다.
+              <br/>
+              그리고 위 <b>Nightly rehearsal</b> 과 동시 사용 금지 — 둘 다 켜면 같은 시각에 중복 실행될 수 있습니다. 외부 스케줄러로 옮기면 Nightly rehearsal 은 끄세요.
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 8 }}>
+              아래 명령을 외부 스케줄러(Control-M · Airflow · Jenkins · cron)에 등록하면 됩니다.
             </div>
             <div style={{
               padding: 10, background: '#0e1a2b', color: '#cad7e8',
@@ -588,8 +599,8 @@ const PSSchedule = ({ project }) => {
               <div style={{ marginTop: 6 }}><span style={{ color: '#7a8aa6' }}># 롤백</span></div>
               <div><span style={{ color: '#e8b86f' }}>migrate</span> rollback --project <span style={{ color: '#9fd9b3' }}>{pid}</span> --to <span style={{ color: '#9fd9b3' }}>pre-cutover</span></div>
             </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 8, fontFamily: 'var(--mono)' }}>
-              CLI 경로 · API endpoint · API token은 Solution Settings › External integrations에서 관리
+            <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 8 }}>
+              CLI 경로 · API endpoint · API token 은 <b>Solution Settings › External integrations</b> 에서 관리합니다.
             </div>
           </div>
         )}

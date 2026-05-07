@@ -185,6 +185,7 @@ const SCHEMA_DIFF = [
     table: 'ACCT_MASTER',
     asis:  'CORE.ACCT_MASTER',
     tobe:  'public.account',
+    sources: [],
     asisCols: [
       { name: 'ACCT_NO',      type: 'CHAR(16)',            nullable: false, pk: true  },
       { name: 'CUST_ID',      type: 'CHAR(10)',            nullable: false },
@@ -226,10 +227,7 @@ const SCHEMA_DIFF = [
     table: 'CUST_PROFILE',
     asis:  'CORE.CUST_PROFILE ⋈ CORE.CUST_CONTACT',
     tobe:  'public.customer',
-    sources: [
-      { alias: 'cp', table: 'CORE.CUST_PROFILE', role: 'primary', rows: 2_118_774 },
-      { alias: 'cc', table: 'CORE.CUST_CONTACT', role: 'join', joinType: 'LEFT JOIN', joinOn: 'cp.CUST_ID = cc.CUST_ID', rows: 4_882_091 },
-    ],
+    sources: [],
     asisCols: [
       { name: 'CUST_ID',      type: 'CHAR(10)',             nullable: false, pk: true, source: 'cp' },
       { name: 'NAME_KANJI',   type: 'CHAR(60) EBCDIC-KANA', nullable: false,           source: 'cp' },
@@ -266,6 +264,7 @@ const SCHEMA_DIFF = [
     table: 'TXN_JOURNAL_2024',
     asis:  'CORE.TXN_JOURNAL_2024',
     tobe:  'public.transaction_2024',
+    sources: [],
     asisCols: [
       { name: 'TXN_ID',       type: 'CHAR(24)',         nullable: false, pk: true },
       { name: 'ACCT_NO',      type: 'CHAR(16)',         nullable: false },
@@ -297,10 +296,7 @@ const SCHEMA_DIFF = [
     table: 'TRANSACTION_UNIFIED',
     asis:  'CORE.TXN_JOURNAL_2023 ∪ CORE.TXN_JOURNAL_2024',
     tobe:  'public.transaction_all',
-    sources: [
-      { alias: 't23', table: 'CORE.TXN_JOURNAL_2023', role: 'union', rows: 284_003_117 },
-      { alias: 't24', table: 'CORE.TXN_JOURNAL_2024', role: 'union', rows: 312_889_001 },
-    ],
+    sources: [],
     asisCols: [
       { name: 'TXN_ID',     type: 'CHAR(24)',            nullable: false, pk: true, source: 't23+t24' },
       { name: 'ACCT_NO',    type: 'CHAR(16)',            nullable: false,           source: 't23+t24' },
@@ -410,122 +406,79 @@ const updateColumnOverride  = (internalName, colName, override) => {
   }
 };
 
-/* Build a column-mapping row from a user override. Handles 5 rule types:
-   rename · transform · constant · drop · (future) merge. Missing source
-   in current bindings → row marked status='err' so user notices. */
+/* Build a column-mapping row from a user override. Three explicit strategies:
+   - source column  → 'auto' (passthrough) or 'rule' (transform) based on type delta + SQL expr
+   - 'null'         → fill NULL (only valid for nullable columns)
+   - 'default'      → use DDL DEFAULT clause (only valid if one is defined) */
 const rowFromOverride = (tc, ov, asisByName) => {
-  const base = { tgt: tc.name, tgtType: tc.type, pk: !!tc.pk, overridden: true };
-  switch (ov.rule) {
-    case 'drop':
-      return { ...base, src: '—', srcType: '—',
-        rule: 'skip', status: 'skip',
-        note: ov.note || 'manually excluded', sourceAlias: null };
-    case 'constant':
-      return { ...base, src: ov.constantValue || 'NULL', srcType: 'literal',
-        rule: 'added', status: 'ok',
-        note: ov.note || `constant = ${ov.constantValue ?? 'NULL'}`, sourceAlias: null };
-    case 'rename':
-    case 'transform': {
-      const ac = asisByName[ov.sourceColumn];
-      if (!ac) {
-        return { ...base, src: ov.sourceColumn || '?', srcType: '?',
-          rule: 'rule', status: 'err',
-          note: `override source '${ov.sourceColumn}' not found in current bindings — re-bind or reset`,
-          sourceAlias: ov.sourceAlias || null };
-      }
-      return { ...base, src: ac.name, srcType: ac.type,
-        rule: ov.rule === 'transform' ? 'rule' : 'auto',
-        status: 'ok',
-        note: ov.note || (ov.rule === 'transform' ? ov.transformExpr : ''),
-        sourceAlias: ac.source || ov.sourceAlias || null,
-        transformExpr: ov.transformExpr };
-    }
-    default:
-      return { ...base, src: '?', srcType: '?', rule: 'rule', status: 'err',
-        note: `unknown override rule: ${ov.rule}`, sourceAlias: null };
+  const tgtNullable = tc.nullable !== false;
+  const ddlDefault = tc.default && tc.default !== 'NULL' ? tc.default : null;
+  const base = { tgt: tc.name, tgtType: tc.type, pk: !!tc.pk, tgtNullable, ddlDefault, overridden: true };
+
+  if (ov.rule === 'null') {
+    return { ...base, src: 'NULL', srcType: 'literal',
+      rule: 'null', status: tgtNullable ? 'ok' : 'err',
+      note: ov.note || (tgtNullable ? 'mapped to NULL' : 'NOT NULL column cannot be NULL — pick another strategy'),
+      sourceAlias: null };
   }
+  if (ov.rule === 'default') {
+    return { ...base, src: 'DEFAULT', srcType: 'literal',
+      rule: 'default', status: ddlDefault ? 'ok' : 'err',
+      note: ov.note || (ddlDefault ? `DDL default ${ddlDefault}` : 'no DDL default defined — fix DDL or pick another strategy'),
+      sourceAlias: null };
+  }
+  /* source-based mapping */
+  const ac = asisByName[ov.sourceColumn];
+  if (!ac) {
+    return { ...base, src: ov.sourceColumn || '?', srcType: '?',
+      rule: 'rule', status: 'err',
+      note: `override source '${ov.sourceColumn}' not found in current bindings — re-bind or clear mapping`,
+      sourceAlias: ov.sourceAlias || null };
+  }
+  const hasExpr   = !!(ov.transformExpr && ov.transformExpr.trim());
+  const typeDelta = ac.type !== tc.type;
+  const rule = hasExpr || typeDelta ? 'rule' : 'auto';
+  return { ...base, src: ac.name, srcType: ac.type,
+    rule, status: 'ok',
+    note: ov.note || (hasExpr ? ov.transformExpr : ''),
+    sourceAlias: ac.source || ov.sourceAlias || null,
+    transformExpr: ov.transformExpr };
 };
 
 const mappingsFromSchemaDiff = (t) => {
   const rows = [];
-  /* Use dynamic asisCols derived from the current sources binding, so the
-     column grid reacts to JOIN/UNION edits in Table binding. */
+  /* Target-centric: one row per TO-BE column. Every TO-BE column starts
+     'unmapped' until the user picks a source. The status is derived from
+     DDL nullable + default — no auto-rename or 'added' inference (those
+     would be guesses; user picks).
+       - nullable               → queued (run will fill NULL)
+       - NOT NULL with default  → queued (run will use the DDL default)
+       - NOT NULL no default    → err   (must assign source or fix DDL) */
   const asisCols = effectiveAsisCols(t);
   const asisByName = Object.fromEntries(asisCols.map(c => [c.name, c]));
-  const referenced = new Set();
   const overrides = getColumnOverrides(t.table);
+  const hasBinding = (t.sources || []).length > 0;
 
   t.tobeCols.forEach(tc => {
-    /* Manual override takes precedence over everything (added / renameFrom / direct). */
     const ov = overrides[tc.name];
     if (ov) {
       rows.push(rowFromOverride(tc, ov, asisByName));
-      if (ov.sourceColumn) referenced.add(ov.sourceColumn);
-      if (Array.isArray(ov.sourceColumns)) ov.sourceColumns.forEach(n => referenced.add(n));
       return;
     }
-    if (tc.added) {
-      const mergedSrc = tc.mergedFrom ? tc.mergedFrom.join(' + ') : '—';
-      /* Check merged-from columns exist in current sources. If not, fall
-         back to a 'missing source' warning so the user notices that removing
-         a binding broke a merge target. */
-      const mergedPresent = tc.mergedFrom ? tc.mergedFrom.every(n => asisByName[n]) : true;
-      rows.push({
-        src: mergedSrc, srcType: tc.mergedFrom ? 'multi' : '—',
-        tgt: tc.name, tgtType: tc.type,
-        rule: tc.mergedFrom ? 'rule' : 'added',
-        status: !mergedPresent ? 'err'
-          : (tc.default && tc.default !== 'NULL') ? 'ok'
-          : (tc.mergedFrom ? 'ok' : 'warn'),
-        pk: !!tc.pk,
-        note: !mergedPresent
-          ? `merge source missing: ${tc.mergedFrom.filter(n => !asisByName[n]).join(', ')}`
-          : tc.mergedFrom
-            ? `merge(${tc.mergedFrom.join(' + ')}) → ${tc.type}`
-            : `default = ${tc.default ?? 'NULL'}`,
-        sourceAlias: null,
-      });
-      if (tc.mergedFrom) tc.mergedFrom.forEach(n => referenced.add(n));
-      return;
-    }
-    const srcName = tc.renameFrom || tc.name;
-    const ac = asisByName[srcName];
-    if (!ac) {
-      rows.push({
-        src: srcName, srcType: '?',
-        tgt: tc.name, tgtType: tc.type,
-        rule: 'rule', status: 'err',
-        pk: !!tc.pk, note: 'source column not found (binding removed?)',
-      });
-      return;
-    }
-    referenced.add(srcName);
-    const typeChanged = ac.type !== tc.type;
-    const needsTransform = typeChanged || /EBCDIC|COMP-3|YYYYMMDD|HHMMSS/.test(ac.type);
-    const rule = needsTransform ? 'rule' : 'auto';
-    const lowConf = (tc.renameConfidence ?? 1) < 0.85;
+    const tgtNullable = tc.nullable !== false;
+    const ddlDefault = tc.default && tc.default !== 'NULL' ? tc.default : null;
     rows.push({
-      src: ac.name, srcType: ac.type,
+      src: '—', srcType: '—',
       tgt: tc.name, tgtType: tc.type,
-      rule,
-      status: lowConf ? 'warn' : 'ok',
-      pk: !!tc.pk,
-      note: lowConf ? `low rename confidence ${Math.round((tc.renameConfidence ?? 1) * 100)}%` : '',
-      sourceAlias: ac.source,
+      rule: 'unmapped', status: 'queued',
+      pk: !!tc.pk, tgtNullable,
+      ddlDefault,
+      mergeHint: tc.mergedFrom || null, /* informational only — user must still pick */
+      note: hasBinding
+        ? 'pick a strategy — open Inspector → AS-IS column / Use NULL / Use DDL default'
+        : 'no source bound — expand Table binding above to add an AS-IS source',
+      sourceAlias: null,
     });
-  });
-
-  /* AS-IS columns that the current bindings include but no TO-BE references → dropped */
-  asisCols.forEach(ac => {
-    if (!referenced.has(ac.name)) {
-      rows.push({
-        src: ac.name, srcType: ac.type,
-        tgt: '—', tgtType: '—',
-        rule: 'skip', status: 'skip',
-        pk: !!ac.pk, note: 'dropped from TO-BE',
-        sourceAlias: ac.source,
-      });
-    }
   });
 
   return rows;
@@ -698,9 +651,7 @@ const ASIS_COLUMN_SCHEMA = {
    current sources (which the Table binding editor can mutate). */
 const effectiveAsisCols = (sd) => {
   if (!sd) return [];
-  const sources = (sd.sources && sd.sources.length > 0)
-    ? sd.sources
-    : (sd.asis ? [{ alias: null, table: sd.asis, role: 'primary' }] : []);
+  const sources = sd.sources || [];
   const cols = [];
   const seen = new Map(); // column name → idx in cols (for UNION merge)
   const isUnion = sources[0]?.role === 'union';
@@ -728,8 +679,7 @@ const buildAsisInventory = () => {
   /* Routing info overlaid from bindings — never removes tables from the list. */
   const routingMap = new Map();
   SCHEMA_DIFF.forEach(sd => {
-    const sources = sd.sources || (sd.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
-    sources.forEach(s => {
+    (sd.sources || []).forEach(s => {
       const list = routingMap.get(s.table) || [];
       list.push({ tobe: sd.tobe, via: sd.table, role: s.role });
       routingMap.set(s.table, list);
@@ -749,7 +699,7 @@ const buildAsisInventory = () => {
 const buildTobeInventory = () => {
   return TOBE_SCHEMA_TABLES.map(t => {
     const sd = SCHEMA_DIFF.find(s => s.tobe === t.name);
-    const sources = sd?.sources || (sd?.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
+    const sources = sd?.sources || [];
     const kind = sources.length > 1
       ? (sources[0].role === 'union' ? 'union' : 'join')
       : sources.length === 1 ? 'single' : 'none';
@@ -934,25 +884,26 @@ const getPreflightChecks = (project) => {
     detail: !bothDdl ? 'DDL 두 쪽 모두 import 후 검증됩니다'
       : unroutedTobe.length === 0 ? `${tobeInv.length} tables all routed`
       : `${unroutedTobe.length} unrouted: ${unroutedTobe.slice(0, 4).map(t => t.tableShort).join(', ')}${unroutedTobe.length > 4 ? ' …' : ''}`,
-    fix: { tab: 'mapping' },
+    fix: { tab: 'mapping',
+      target: unroutedTobe[0] ? { side: 'tobe', tobeName: unroutedTobe[0].name, internalName: unroutedTobe[0].internalName } : null },
   });
 
   const unroutedAsis = asisInv.filter(t => t.unrouted);
   checks.push({
-    id: 'asis-orphans', title: 'AS-IS 고아 테이블 점검',
+    id: 'asis-orphans', title: '미사용 AS-IS 테이블 확인',
     status: !bothDdl ? 'skip' : unroutedAsis.length === 0 ? 'pass' : 'warn',
     detail: !bothDdl ? 'DDL 두 쪽 모두 import 후 검증됩니다'
-      : unroutedAsis.length === 0 ? 'all AS-IS tables routed'
-      : `${unroutedAsis.length} unrouted (의도적 제외 확인 필요): ${unroutedAsis.map(t => t.tableShort).join(', ')}`,
+      : unroutedAsis.length === 0 ? '모든 AS-IS 테이블이 라우팅됨'
+      : `${unroutedAsis.length}개 테이블이 어디에도 라우팅 안 됨 (의도적 제외라면 무시): ${unroutedAsis.map(t => t.tableShort).join(', ')}`,
     fix: { tab: 'mapping' },
   });
 
-  /* NOT-NULL added columns with NULL defaults — blocks insert */
+  /* NOT-NULL added columns with NULL defaults — DDL flaw, must fix in target DDL */
   const violations = [];
   (SCHEMA_DIFF || []).forEach(sd => {
     sd.tobeCols.forEach(tc => {
       if (tc.added && tc.nullable === false && (!tc.default || tc.default === 'NULL')) {
-        violations.push(`${sd.tobe}.${tc.name}`);
+        violations.push({ internalName: sd.table, tobe: sd.tobe, colName: tc.name });
       }
     });
   });
@@ -961,40 +912,35 @@ const getPreflightChecks = (project) => {
     status: violations.length === 0 ? 'pass' : 'fail',
     detail: violations.length === 0
       ? 'all new NOT NULL columns have non-NULL defaults'
-      : `${violations.length} violation: ${violations.slice(0, 3).join(', ')}${violations.length > 3 ? ' …' : ''}`,
-    fix: { tab: 'mapping' },
+      : `${violations.length} 컬럼이 NOT NULL 인데 default 없음 — TO-BE DDL 의 DEFAULT 절 추가 필요: ${violations.slice(0, 3).map(v => `${v.tobe}.${v.colName}`).join(', ')}${violations.length > 3 ? ' …' : ''}`,
+    fix: { tab: 'settings', section: 'target' },
   });
 
-  /* Low-confidence renames — warning */
-  const lowConf = [];
-  (SCHEMA_DIFF || []).forEach(sd => {
-    sd.tobeCols.forEach(tc => {
-      if (tc.renameFrom && (tc.renameConfidence ?? 1) < 0.70) {
-        lowConf.push(`${sd.tobe}.${tc.name} ← ${tc.renameFrom} (${Math.round((tc.renameConfidence ?? 1) * 100)}%)`);
-      }
+  /* Unmapped TO-BE columns — must be assigned a source (or explicitly added) before run */
+  const unmapped = [];
+  let firstUnmapped = null;
+  if (bothDdl) {
+    (SCHEMA_DIFF || []).forEach(sd => {
+      const rows = mappingsFromSchemaDiff(sd) || [];
+      rows.forEach(r => {
+        if (r.rule === 'unmapped') {
+          unmapped.push(`${sd.tobe}.${r.tgt}`);
+          if (!firstUnmapped) firstUnmapped = { side: 'tobe', tobeName: sd.tobe, internalName: sd.table, colName: r.tgt };
+        }
+      });
     });
-  });
+  }
   checks.push({
-    id: 'low-confidence', title: '낮은 신뢰도 rename 검토',
-    status: lowConf.length === 0 ? 'pass' : 'warn',
-    detail: lowConf.length === 0 ? 'all renames above 70% confidence'
-      : `${lowConf.length} field(s) need review: ${lowConf.slice(0, 2).join(' · ')}${lowConf.length > 2 ? ' …' : ''}`,
-    fix: { tab: 'mapping' },
+    id: 'unmapped-cols', title: '모든 TO-BE 컬럼 매핑 지정',
+    status: !bothDdl ? 'skip' : unmapped.length === 0 ? 'pass' : 'fail',
+    detail: !bothDdl ? 'DDL 두 쪽 모두 import 후 검증됩니다'
+      : unmapped.length === 0 ? 'all TO-BE columns have a source assigned'
+      : `${unmapped.length} unmapped: ${unmapped.slice(0, 3).join(', ')}${unmapped.length > 3 ? ' …' : ''}`,
+    fix: { tab: 'mapping', target: firstUnmapped },
   });
 
-  /* Primary key coverage */
-  const pkMissing = [];
-  (SCHEMA_DIFF || []).forEach(sd => {
-    const hasPk = sd.tobeCols.some(c => c.pk);
-    if (!hasPk) pkMissing.push(sd.tobe);
-  });
-  checks.push({
-    id: 'pk-presence', title: 'Primary key 존재',
-    status: pkMissing.length === 0 ? 'pass' : 'warn',
-    detail: pkMissing.length === 0 ? 'all tables have PK'
-      : `no PK: ${pkMissing.slice(0, 3).join(', ')}${pkMissing.length > 3 ? ' …' : ''}`,
-    fix: { tab: 'mapping' },
-  });
+  /* PK presence는 DDL 정의이지 사용자 매핑 작업 영역이 아니므로 preflight 에서 제외.
+     DDL import 시점에 별도로 검증되어야 함. */
 
   /* Approved snapshot — runs must be executed off an approved version. */
   const snaps = (MAPPING_SNAPSHOTS_BY_PROJECT || {})[project?.id] || [];
@@ -1215,6 +1161,43 @@ const AUDIT_LOG_BY_PROJECT = {
 
 const getSnapshots     = (projectId) => MAPPING_SNAPSHOTS_BY_PROJECT[projectId] || [];
 const getAuditLog      = (projectId) => AUDIT_LOG_BY_PROJECT[projectId] || [];
+
+/* Create a new snapshot of the current mapping state — pushed as 'pending'
+   so the reviewer can approve. Version number bumps the minor of the latest. */
+const createSnapshot = (projectId, notes) => {
+  if (!projectId) return null;
+  if (!MAPPING_SNAPSHOTS_BY_PROJECT[projectId]) MAPPING_SNAPSHOTS_BY_PROJECT[projectId] = [];
+  if (!AUDIT_LOG_BY_PROJECT[projectId])         AUDIT_LOG_BY_PROJECT[projectId] = [];
+  const list = MAPPING_SNAPSHOTS_BY_PROJECT[projectId];
+  const latest = list[list.length - 1];
+  /* version bump: 1.2 → 1.3, 0.9 → 1.0 if approved exists, else 0.10 etc. Keep simple. */
+  let nextVersion;
+  if (!latest) {
+    nextVersion = '1.0';
+  } else {
+    const parts = String(latest.version).split('.');
+    const major = parseInt(parts[0], 10) || 1;
+    const minor = parseInt(parts[1], 10) || 0;
+    nextVersion = `${major}.${minor + 1}`;
+  }
+  const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const snap = {
+    id: `${projectId}-v${nextVersion}`,
+    version: nextVersion,
+    createdAt: now, author: 'Admin',
+    notes: notes || 'Manual snapshot',
+    status: 'pending', reviewer: 'Reviewer',
+    changes: [], /* real tool diffs against previous snapshot — mock */
+  };
+  list.push(snap);
+  AUDIT_LOG_BY_PROJECT[projectId].unshift({
+    at: now, actor: 'Admin', action: 'snapshot',
+    target: `v${nextVersion}`,
+    detail: notes || 'Manual snapshot — sent to Reviewer',
+  });
+  return snap;
+};
+
 const getLatestApproved = (projectId) => {
   const snaps = getSnapshots(projectId);
   for (let i = snaps.length - 1; i >= 0; i--) if (snaps[i].status === 'approved') return snaps[i];
@@ -1329,7 +1312,7 @@ Object.assign(window, {
   mockColumnProfile, mockTableSamples,
   getPreflightChecks, QUARANTINE_ENTRIES,
   MAPPING_SNAPSHOTS_BY_PROJECT, AUDIT_LOG_BY_PROJECT,
-  getSnapshots, getAuditLog, getLatestApproved,
+  getSnapshots, getAuditLog, getLatestApproved, createSnapshot,
   NOTIFICATION_EVENTS, NOTIFICATIONS_SEED, getNotifications, getUnreadCount,
   PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun, getPhaseLabel, getPhaseDesc,
   COLUMN_OVERRIDES, getColumnOverrides, updateColumnOverride,

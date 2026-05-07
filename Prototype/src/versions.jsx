@@ -40,21 +40,15 @@ const Versions = ({ project }) => {
     } : s));
   };
   const handleSnapshot = () => {
-    const nextVer = snapshots.length === 0 ? '1.0'
-      : bumpVersion(snapshots[snapshots.length - 1].version);
-    const snap = {
-      id: `${project.id}-v${nextVer}-${Date.now()}`,
-      version: nextVer,
-      createdAt: 'just now',
-      author: 'Admin',
-      notes: `Snapshotted from draft (${draftChanges} changes)`,
-      status: 'pending',
-      reviewer: 'Reviewer',
-      changes: Array.from({ length: draftChanges }, (_, i) => ({
-        kind: 'modified', target: `mock.change.${i + 1}`, detail: '(mock — prototype does not track real edits)',
-      })),
-    };
-    setSnapshots(list => [...list, snap]);
+    const notes = hasDraft
+      ? `Snapshotted from draft (${draftChanges} changes)`
+      : 'Manual snapshot of current mapping state';
+    const snap = window.createSnapshot
+      ? window.createSnapshot(project.id, notes)
+      : null;
+    if (!snap) return;
+    /* createSnapshot mutated the source-of-truth list; refetch into local state. */
+    setSnapshots(window.getSnapshots(project.id));
     setSelectedId(snap.id);
   };
 
@@ -126,9 +120,10 @@ const StatusBanner = ({ latestApproved, pendingCount, hasDraft, draftChanges, on
         {pendingCount > 0 && <span style={{ marginLeft: 10, color: 'var(--amber)' }}>· {pendingCount} pending review</span>}
         {hasDraft && <span style={{ marginLeft: 10, color: 'var(--amber)' }}>· {draftChanges} uncommitted changes</span>}
       </div>
-      {hasDraft && (
-        <Btn kind="primary" size="sm" icon={<Ic.plus/>} onClick={onSnapshot}>Snapshot draft → v…</Btn>
-      )}
+      <Btn kind={hasDraft ? 'primary' : 'secondary'} size="sm" icon={<Ic.plus/>} onClick={onSnapshot}
+        title="현재 매핑 상태를 새 버전으로 동결합니다 (pending 상태 → 리뷰 후 approve)">
+        Create snapshot
+      </Btn>
     </div>
   );
 };

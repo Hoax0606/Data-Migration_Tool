@@ -8,7 +8,7 @@ const DEFAULT_SITES = [
 
 const App = () => {
   const [activeProject, setActiveProject] = React.useState('p1');
-  const [view, setView] = React.useState('project'); // 'site' | 'project' | 'sitesettings' | 'solutionsettings'
+  const [view, setView] = React.useState('project'); // 'site' | 'project' | 'sitesettings'
   const [tab, setTab] = React.useState('dashboard');
   const [sites, setSites] = React.useState(DEFAULT_SITES);
   const [activeSite, setActiveSite] = React.useState('s1');
@@ -21,10 +21,14 @@ const App = () => {
   const [projects, setProjects] = React.useState(PROJECTS);
   const [showNew, setShowNew] = React.useState(false);
   const [showNewSite, setShowNewSite] = React.useState(false);
-  const [overlay, setOverlay] = React.useState(null); // 'profile' | 'help' | 'about' | 'signout' | 'signedout' | null
+  const [overlay, setOverlay] = React.useState(null); // 'profile' | 'help' | 'about' | 'signout' | 'signedout' | 'solutionsettings' | null
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [settingsSection, setSettingsSection] = React.useState('general');
   const [notifications, setNotifications] = React.useState(() => window.getNotifications?.() || []);
+  /* Preflight Fix deep-link target — { side, internalName, tobeName, colName }.
+     Set when user clicks Fix on a preflight check; consumed by Mapping/Settings
+     to auto-select + pulse the offending row. Cleared after ~3s. */
+  const [fixTarget, setFixTarget] = React.useState(null);
 
   /* VSCode-style sidebar toggle — Ctrl/Cmd+B */
   React.useEffect(() => {
@@ -73,8 +77,8 @@ const App = () => {
         onSwitchSite={(id) => setActiveSite(id)}
         onNewSite={() => setShowNewSite(true)}
         onSiteSettings={() => setView('sitesettings')}
-        onSolutionSettings={() => setView('solutionsettings')}
-        solutionActive={view === 'solutionsettings'}
+        onSolutionSettings={() => setOverlay('solutionsettings')}
+        solutionActive={overlay === 'solutionsettings'}
         onProfile={() => setOverlay('profile')}
         onHelp={() => setOverlay('help')}
         onAbout={() => setOverlay('about')}
@@ -133,16 +137,6 @@ const App = () => {
                 <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.1 }}>Site settings · {site?.name}</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 1 }}>
                   name · environment · database · password
-                </div>
-              </div>
-            </div>
-          ) : view === 'solutionsettings' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-              <div style={{ width: 18, height: 18, borderRadius: 3, background: 'var(--navy)', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11 }}>⚙</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.1 }}>Solution settings</div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 1 }}>
-                  preferences for ModernizeProData · applies across all sites
                 </div>
               </div>
             </div>
@@ -212,6 +206,7 @@ const App = () => {
               if (view !== 'project') setView('project');
             }}
           />
+          {view === 'project' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>
             {['asis', 'tobe'].map(side => {
               const c = project.connections?.[side];
@@ -229,7 +224,6 @@ const App = () => {
                 'Not tested yet';
               return (
                 <button key={side} onClick={() => {
-                    if (view !== 'project') return;
                     setSettingsSection(side === 'asis' ? 'source' : 'target');
                     setTab('settings');
                   }}
@@ -239,9 +233,9 @@ const App = () => {
                     padding: '2px 8px', background: 'var(--panel-2)',
                     border: '1px solid var(--border)', borderRadius: 10,
                     fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit',
-                    cursor: view === 'project' ? 'pointer' : 'default',
+                    cursor: 'pointer',
                   }}
-                  onMouseEnter={e => { if (view === 'project') e.currentTarget.style.background = 'var(--panel)'; }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--panel)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'var(--panel-2)'}
                 >
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
@@ -250,10 +244,11 @@ const App = () => {
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Tabs */}
-        {view === 'sitesettings' || view === 'solutionsettings' ? (
+        {view === 'sitesettings' ? (
           <div style={{
             display: 'flex', alignItems: 'center',
             padding: '0 12px',
@@ -268,9 +263,9 @@ const App = () => {
               background: 'var(--panel)', cursor: 'pointer', fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--sans)',
             }}>← Back</button>
             <span style={{ color: 'var(--text-4)' }}>/</span>
-            <span>{view === 'sitesettings' ? (site?.name.toLowerCase().replace(/\s+/g,'-')) : 'modernizeprodata'}</span>
+            <span>{site?.name.toLowerCase().replace(/\s+/g,'-')}</span>
             <span style={{ color: 'var(--text-4)' }}>/</span>
-            <span style={{ color: 'var(--navy)', fontWeight: 600 }}>{view === 'sitesettings' ? 'site settings' : 'solution settings'}</span>
+            <span style={{ color: 'var(--navy)', fontWeight: 600 }}>site settings</span>
           </div>
         ) : (
         <div style={{
@@ -333,8 +328,6 @@ const App = () => {
                   if (remaining[0]) setActiveSite(remaining[0].id);
                   setView('project');
                 }}/>
-            : view === 'solutionsettings'
-            ? <SolutionSettings onBack={() => setView('project')} theme={theme} setTheme={setTheme}/>
             : view === 'site'
             ? (tab === 'export'
                 ? <ExportTab project={null} tables={TABLES} mapping={MAPPING} scope="site" allProjects={projects}/>
@@ -345,12 +338,13 @@ const App = () => {
             : project.isNew && tab !== 'settings'
             ? <EmptyProject project={project} tab={tab}/>
             : <>
-                {tab === 'dashboard' && <Dashboard tables={TABLES}/>}
-                {tab === 'mapping'   && <Mapping project={project}/>}
+                {tab === 'dashboard' && <Dashboard project={project} onTabChange={setTab}/>}
+                {tab === 'mapping'   && <Mapping project={project} fixTarget={fixTarget} onConsumeFixTarget={() => setFixTarget(null)}/>}
                 {tab === 'versions'  && <Versions project={project}/>}
                 {tab === 'execution' && <Execution stages={STAGES} project={project}
                     onTabChange={setTab}
-                    onSettingsSection={setSettingsSection}/>}
+                    onSettingsSection={setSettingsSection}
+                    onSetFixTarget={setFixTarget}/>}
                 {tab === 'artifacts' && <Artifacts tables={SCHEMA_DIFF} projectTables={TABLES}/>}
                 {tab === 'logs'      && <Logs lines={LOG_LINES}/>}
                 {tab === 'settings'  && <ProjectSettings project={project}
@@ -443,6 +437,7 @@ const App = () => {
       {overlay === 'profile'  && <AccountProfile onClose={() => setOverlay(null)}/>}
       {overlay === 'help'     && <Help onClose={() => setOverlay(null)}/>}
       {overlay === 'about'    && <About onClose={() => setOverlay(null)}/>}
+      {overlay === 'solutionsettings' && <SolutionSettings onClose={() => setOverlay(null)} theme={theme} setTheme={setTheme}/>}
       {overlay === 'signout'  && <SignOutScreen
         onCancel={() => setOverlay(null)}
         onConfirm={() => setOverlay('signedout')}

@@ -2,19 +2,20 @@
    collapsible table-level binding and column-level mapping detail.
    Handles all four DDL states: both / asis-only / tobe-only / neither. */
 
-const Mapping = ({ project }) => {
+const Mapping = ({ project, fixTarget, onConsumeFixTarget }) => {
   const hasAsis = !!project?.ddl?.asis;
   const hasTobe = !!project?.ddl?.tobe;
 
   if (!hasAsis && !hasTobe) {
     return <GlobalEmpty project={project} which="both"/>;
   }
-  return <FullMapping project={project} hasAsis={hasAsis} hasTobe={hasTobe}/>;
+  return <FullMapping project={project} hasAsis={hasAsis} hasTobe={hasTobe}
+    fixTarget={fixTarget} onConsumeFixTarget={onConsumeFixTarget}/>;
 };
 
 /* ─── Main dual-pane mapping UI ─────────────────────────────────── */
 
-const FullMapping = ({ project, hasAsis, hasTobe }) => {
+const FullMapping = ({ project, hasAsis, hasTobe, fixTarget, onConsumeFixTarget }) => {
   /* bindingsVersion is bumped whenever a SCHEMA_DIFF.sources entry is mutated
      via updateBinding. Every inventory/detail memo re-runs so the sidebar
      badges, CollapsibleBinding, and source-alias tags stay in sync. */
@@ -27,17 +28,24 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
     setOverridesVersion(v => v + 1);
   }, []);
 
+  /* WHERE filter on a TO-BE binding — used for 1:N split (same AS-IS feeds
+     multiple TO-BE tables, each filtered to its slice of rows). */
+  const updateWhereFilter = React.useCallback((internalName, whereStr) => {
+    const sd = (window.SCHEMA_DIFF || []).find(s => s.table === internalName);
+    if (!sd) return;
+    sd.whereFilter = whereStr || undefined;
+    setBindingsVersion(v => v + 1);
+  }, []);
+
   const asisInventory = React.useMemo(() => hasAsis ? window.getAsisInventory() : [], [hasAsis, bindingsVersion]);
   const tobeInventory = React.useMemo(() => hasTobe ? window.getTobeInventory() : [], [hasTobe, bindingsVersion]);
 
   const updateBinding = React.useCallback((internalName, updater) => {
     const sd = (window.SCHEMA_DIFF || []).find(s => s.table === internalName);
     if (!sd) return;
-    const current = sd.sources || (sd.asis
-      ? [{ alias: genAlias(sd.asis, []), table: sd.asis, role: 'primary' }]
-      : []);
+    const current = sd.sources || [];
     const next = updater(current);
-    sd.sources = (next && next.length > 0) ? next : undefined;
+    sd.sources = next || [];
     setBindingsVersion(v => v + 1);
   }, []);
 
@@ -64,6 +72,25 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
     }
   }, [hasAsis, hasTobe]);
 
+  /* Pulse-highlight a specific row when a Fix deep-link arrives. The
+     fixTarget shape is { side, internalName, tobeName, colName? }. We
+     update selection and pass colName down as pulseColName; the grid clears
+     it after ~2.5s. */
+  const [pulseColName, setPulseColName] = React.useState(null);
+  React.useEffect(() => {
+    if (!fixTarget) return;
+    if (fixTarget.side === 'tobe' && fixTarget.internalName) {
+      setSel({ side: 'tobe', name: fixTarget.tobeName, internalName: fixTarget.internalName });
+    }
+    if (fixTarget.colName) {
+      setPulseColName(fixTarget.colName);
+      const t = setTimeout(() => setPulseColName(null), 2500);
+      onConsumeFixTarget?.();
+      return () => clearTimeout(t);
+    }
+    onConsumeFixTarget?.();
+  }, [fixTarget]);
+
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
       <DualInventory
@@ -80,8 +107,10 @@ const FullMapping = ({ project, hasAsis, hasTobe }) => {
         asisInventory={asisInventory}
         tobeInventory={tobeInventory}
         bindingsVersion={bindingsVersion}
+        overridesVersion={overridesVersion}
         updateOverride={updateOverride}
-        /* overridesVersion state in parent triggers re-render cascade — no prop needed */
+        updateWhereFilter={updateWhereFilter}
+        pulseColName={pulseColName}
       />
     </div>
   );
@@ -330,7 +359,7 @@ const InventoryItem = ({ side, table, isSelected, onClick }) => {
 
 /* ─── Right: workspace routes by selection ──────────────────────── */
 
-const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion, updateOverride }) => {
+const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion, overridesVersion, updateOverride, updateWhereFilter, pulseColName }) => {
   if (!selected) {
     return <GuidePanel hasAsis={hasAsis} hasTobe={hasTobe}/>;
   }
@@ -346,6 +375,8 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
       updateBinding={updateBinding}
       asisInventory={asisInventory}
       updateOverride={updateOverride}
+      updateWhereFilter={updateWhereFilter}
+      pulseColName={pulseColName}
     />;
   }
   /* AS-IS side */
@@ -354,6 +385,7 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
     tobeInventory={tobeInventory}
     updateBinding={updateBinding}
     bindingsVersion={bindingsVersion}
+    overridesVersion={overridesVersion}
     hasTobe={hasTobe}
     onJumpToTobe={(tobe) => onSelect({ side: 'tobe', name: tobe.name, internalName: tobe.internalName })}
   />;
@@ -366,7 +398,7 @@ const resolveMapping = (selected) => {
 
 /* ─── TO-BE detail — existing column mapping grid + collapsible binding ── */
 
-const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory, updateOverride }) => {
+const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory, updateOverride, updateWhereFilter, pulseColName }) => {
   const [q, setQ] = React.useState('');
   const [ruleFilter, setRuleFilter] = React.useState('all');
   const [activeIdx, setActiveIdx] = React.useState(0);
@@ -375,10 +407,20 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
 
   React.useEffect(() => {
     if (!mapping) return;
-    const idx = mapping.findIndex(r => r.status === 'warn' || r.status === 'err');
+    /* Land on the first row that needs attention: unmapped > error > warn. */
+    const idx = mapping.findIndex(r => r.rule === 'unmapped' || r.status === 'err' || r.status === 'warn');
     setActiveIdx(idx >= 0 ? idx : 0);
-    setBindingOpen(false);
+    /* Auto-expand the binding card when no source is bound yet so the user
+       sees the [Add source] picker as soon as they enter the detail view. */
+    setBindingOpen((schema?.sources || []).length === 0);
   }, [tableName]);
+
+  /* When a Fix deep-link arrives with a colName, jump to that row + scroll. */
+  React.useEffect(() => {
+    if (!pulseColName || !mapping) return;
+    const idx = mapping.findIndex(r => r.tgt === pulseColName);
+    if (idx >= 0) setActiveIdx(idx);
+  }, [pulseColName, mapping]);
 
   /* Row click only updates the active row. If the user closed the Inspector,
      respect that choice — re-open is via the right-edge rail. */
@@ -394,10 +436,10 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
   const active = mapping[activeIdx] || mapping[0];
   const counts = {
     all: mapping.length,
-    auto:  mapping.filter(r => r.rule === 'auto').length,
-    rule:  mapping.filter(r => r.rule === 'rule').length,
-    skip:  mapping.filter(r => r.rule === 'skip').length,
-    added: mapping.filter(r => r.rule === 'added').length,
+    auto:     mapping.filter(r => r.rule === 'auto').length,
+    rule:     mapping.filter(r => r.rule === 'rule').length,
+    added:    mapping.filter(r => r.rule === 'added').length,
+    unmapped: mapping.filter(r => r.rule === 'unmapped').length,
   };
 
   const composition = sourceComposition(schema);
@@ -431,9 +473,9 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
         <div style={{ flex: 1 }}/>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
-          <StatusBadge tone="ok">{counts.auto} passthrough</StatusBadge>
-          <StatusBadge tone="info">{counts.rule} transform</StatusBadge>
-          <StatusBadge tone="skip">{counts.skip} drop</StatusBadge>
+          {counts.unmapped > 0 && <StatusBadge tone="queued">{counts.unmapped} unmapped</StatusBadge>}
+          {counts.auto > 0 && <StatusBadge tone="ok">{counts.auto} passthrough</StatusBadge>}
+          {counts.rule > 0 && <StatusBadge tone="info">{counts.rule} transform</StatusBadge>}
           {counts.added > 0 && <StatusBadge tone="ok">{counts.added} added</StatusBadge>}
         </div>
       </div>
@@ -448,6 +490,8 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
         onToggle={() => setBindingOpen(o => !o)}
         asisInventory={asisInventory}
         updateBinding={updateBinding}
+        updateWhereFilter={updateWhereFilter}
+        whereFilter={schema?.whereFilter || ''}
       />
 
       {/* Toolbar */}
@@ -471,8 +515,8 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
         </div>
         <div style={{ display: 'flex', height: 26, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: 'var(--panel)' }}>
           {[
-            ['all','All'], ['auto','Passthrough'], ['rule','Transform'],
-            ['skip','Drop'], ['added','Added'],
+            ['all','All'], ['unmapped','Unmapped'], ['auto','Passthrough'],
+            ['rule','Transform'], ['added','Added'],
           ].map(([k, l], i) => (
             <button key={k} onClick={() => setRuleFilter(k)} style={{
               padding: '0 10px', border: 'none',
@@ -522,6 +566,7 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
               {rows.map((r, i) => {
                 const realIdx = mapping.indexOf(r);
                 const isActive = realIdx === activeIdx;
+                const pulsing = pulseColName && r.tgt === pulseColName;
                 return (
                   <tr key={r.src + '>' + r.tgt + i}
                     onClick={() => selectRow(realIdx)}
@@ -530,41 +575,39 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
                       borderBottom: '1px solid var(--border)',
                       cursor: 'pointer',
                       borderLeft: isActive ? '2px solid var(--navy)' : '2px solid transparent',
+                      animation: pulsing ? 'mig-pulse 2.4s ease-out 1' : undefined,
                     }}
                   >
                     <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                       {r.pk && <span title="primary key" style={{ color: 'var(--navy)', display: 'inline-flex' }}><Ic.key/></span>}
                     </td>
-                    <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontWeight: 500, color: r.rule === 'skip' ? 'var(--text-3)' : (r.rule === 'added' ? 'var(--text-4)' : 'var(--text)') }}>
-                      {r.rule === 'added' ? <span style={{ fontStyle: 'italic' }}>(new in TO-BE)</span> : r.src}
+                    <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontWeight: 500, color: r.rule === 'skip' ? 'var(--text-3)' : (r.rule === 'added' || r.rule === 'unmapped' || r.rule === 'null' || r.rule === 'default' ? 'var(--text-4)' : 'var(--text)') }}>
+                      {r.rule === 'added' ? <span style={{ fontStyle: 'italic' }}>(new in TO-BE)</span>
+                        : r.rule === 'unmapped' ? <span style={{ fontStyle: 'italic' }}>(unassigned)</span>
+                        : r.rule === 'null' ? <span style={{ fontStyle: 'italic', color: 'var(--text-3)' }}>NULL</span>
+                        : r.rule === 'default' ? <span style={{ fontStyle: 'italic', color: 'var(--text-3)' }}>DEFAULT</span>
+                        : r.src}
                     </td>
                     <td style={{ padding: '5px 4px' }}>
                       <SourceAliasTag alias={r.sourceAlias} composition={composition}/>
                     </td>
                     <td style={{ padding: '5px 10px' }}>{r.srcType === '—' ? <span style={{ color: 'var(--text-4)', fontFamily: 'var(--mono)' }}>—</span> : <TypeBadge>{r.srcType}</TypeBadge>}</td>
-                    <td style={{ padding: '5px 0', textAlign: 'center', color: r.rule === 'skip' ? 'var(--text-4)' : (r.rule === 'added' ? 'var(--green)' : 'var(--text-3)') }}>
-                      {r.rule === 'added' ? '+' : <Ic.arrow/>}
+                    <td style={{ padding: '5px 0', textAlign: 'center', color: r.rule === 'skip' ? 'var(--text-4)' : (r.rule === 'added' ? 'var(--green)' : r.rule === 'unmapped' ? 'var(--text-4)' : 'var(--text-3)') }}>
+                      {r.rule === 'added' ? '+' : r.rule === 'unmapped' ? '?' : <Ic.arrow/>}
                     </td>
                     <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', fontWeight: 500, color: r.rule === 'skip' ? 'var(--text-4)' : 'var(--text)' }}>
                       {r.tgt}
                     </td>
                     <td style={{ padding: '5px 10px' }}>{r.tgtType === '—' ? <span style={{ color: 'var(--text-4)', fontFamily: 'var(--mono)' }}>—</span> : <TypeBadge>{r.tgtType}</TypeBadge>}</td>
                     <td style={{ padding: '5px 10px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <RuleTag rule={r.rule}/>
-                        {r.overridden && (
-                          <span title="manually edited · open Inspector to Reset to auto" style={{
-                            fontSize: 11, color: 'var(--amber)', cursor: 'help',
-                            fontWeight: 700, lineHeight: 1,
-                          }}>✎</span>
-                        )}
-                      </span>
+                      <RuleTag rule={r.rule}/>
                     </td>
                     <td style={{ padding: '5px 10px' }}>
-                      {r.status === 'ok'   && <StatusBadge tone="ok">ok</StatusBadge>}
-                      {r.status === 'warn' && <StatusBadge tone="warn">warn</StatusBadge>}
-                      {r.status === 'err'  && <StatusBadge tone="err">error</StatusBadge>}
-                      {r.status === 'skip' && <StatusBadge tone="skip">skip</StatusBadge>}
+                      {r.status === 'ok'     && <StatusBadge tone="ok">ok</StatusBadge>}
+                      {r.status === 'warn'   && <StatusBadge tone="warn">warn</StatusBadge>}
+                      {r.status === 'err'    && <StatusBadge tone="err">error</StatusBadge>}
+                      {r.status === 'skip'   && <StatusBadge tone="skip">skip</StatusBadge>}
+                      {r.status === 'queued' && <StatusBadge tone="queued">queued</StatusBadge>}
                     </td>
                   </tr>
                 );
@@ -674,7 +717,7 @@ const ModeToggle = ({ kind, sources, onChange, hasMultiple }) => {
   );
 };
 
-const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open, onToggle, asisInventory, updateBinding }) => {
+const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open, onToggle, asisInventory, updateBinding, updateWhereFilter, whereFilter }) => {
   const kind = composition?.kind || 'single';
   const op = kind === 'union' ? '∪' : kind === 'join' ? '⋈' : '';
   const sources = composition?.sources || [];
@@ -698,31 +741,19 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
   const existingTables = sources.map(s => s.table);
   const addable = (asisInventory || []).filter(t => !existingTables.includes(t.name));
 
-  /* Ensure there's a primary entry before appending joins — transitions a
-     single-source binding into a multi-source join composition. */
-  const withPrimary = (srcs) => {
-    if (srcs.length > 0) return srcs;
-    /* Fabricate a primary from the SCHEMA_DIFF asis label */
-    const sd = (window.SCHEMA_DIFF || []).find(s => s.table === internalName);
-    if (!sd || !sd.asis) return srcs;
-    return [{ alias: genAlias(sd.asis, []), table: sd.asis, role: 'primary' }];
-  };
-
   const addSource = (tbl) => {
     updateBinding(internalName, (srcs) => {
-      const base = withPrimary(srcs);
-      const aliases = base.map(s => s.alias);
+      const aliases = srcs.map(s => s.alias);
       const newAlias = genAlias(tbl.name, aliases);
-      /* First-ever source for a stub TO-BE (sd.asis was null so withPrimary
-         couldn't fabricate) — it becomes the primary. */
-      if (base.length === 0) {
+      /* First source becomes the primary. */
+      if (srcs.length === 0) {
         return [{ alias: newAlias, table: tbl.name, role: 'primary', rows: tbl.rows }];
       }
-      const newSrc = base[0].role === 'union'
+      const newSrc = srcs[0].role === 'union'
         ? { alias: newAlias, table: tbl.name, role: 'union', rows: tbl.rows }
         : { alias: newAlias, table: tbl.name, role: 'join', joinType: 'LEFT JOIN',
-            joinOn: `${base[0].alias}.? = ${newAlias}.?`, rows: tbl.rows };
-      return [...base, newSrc];
+            joinOn: `${srcs[0].alias}.? = ${newAlias}.?`, rows: tbl.rows };
+      return [...srcs, newSrc];
     });
     setPickerOpen(false);
   };
@@ -818,6 +849,16 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
           <StatusBadge tone="info">
             {kind === 'union' ? `UNION · ${sources.length}` : `JOIN · ${sources.length}`}
           </StatusBadge>
+        )}
+        {whereFilter && (
+          <span title={`WHERE: ${whereFilter}`} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '1px 6px', borderRadius: 2,
+            background: 'var(--amber-50)', color: 'var(--amber)',
+            border: '1px solid var(--amber)',
+            fontSize: 9.5, fontWeight: 700, fontFamily: 'var(--mono)',
+            letterSpacing: 0.3,
+          }}>⚲ WHERE</span>
         )}
       </div>
 
@@ -1013,6 +1054,35 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
               })}
             </div>
           )}
+
+          {/* WHERE filter — split rows when same AS-IS feeds multiple TO-BE */}
+          {hasAsis && sources.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>WHERE filter</span>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 9.5, color: 'var(--text-4)', textTransform: 'none', letterSpacing: 0 }}>
+                  이 TO-BE 에 포함할 행 조건. 비우면 전체 rows.
+                </span>
+              </div>
+              <input
+                value={whereFilter || ''}
+                onChange={e => updateWhereFilter?.(internalName, e.target.value)}
+                placeholder={`예: ${sources[0]?.alias || 'src'}.party_type = 'P'`}
+                style={{
+                  width: '100%', height: 28, padding: '0 10px',
+                  border: `1px solid ${whereFilter ? 'var(--navy)' : 'var(--border)'}`,
+                  borderRadius: 3,
+                  background: whereFilter ? '#0e1a2b' : 'var(--panel)',
+                  color: whereFilter ? '#cad7e8' : 'var(--text)',
+                  fontFamily: 'var(--mono)', fontSize: 11.5,
+                }}/>
+              {whereFilter && (
+                <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--amber)', fontFamily: 'var(--mono)' }}>
+                  ⚠ 같은 AS-IS 가 여러 TO-BE 에 split 될 때 — 각 TO-BE 의 WHERE 합집합이 전체 rows 를 100% 덮는지 AS-IS 뷰에서 확인
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1021,18 +1091,16 @@ const CollapsibleBinding = ({ composition, tgtTable, internalName, hasAsis, open
 
 const sourceComposition = (sd) => {
   if (!sd) return null;
-  /* Always normalize to an array with at least the primary. This lets the
-     expanded binding editor render single-source bindings the same way as
-     multi-source ones without special-casing. */
-  const sources = (sd.sources && sd.sources.length > 0)
-    ? sd.sources
-    : (sd.asis ? [{ alias: genAlias(sd.asis, []), table: sd.asis, role: 'primary' }] : []);
-  const kind = sources.length <= 1
-    ? 'single'
-    : (sources[0].role === 'union' ? 'union' : 'join');
-  /* Label reflects the current composition, not the stale SCHEMA_DIFF.asis text. */
+  const sources = sd.sources || [];
+  const kind = sources.length === 0
+    ? 'none'
+    : sources.length === 1
+      ? 'single'
+      : (sources[0].role === 'union' ? 'union' : 'join');
   const op = kind === 'union' ? ' ∪ ' : kind === 'join' ? ' ⋈ ' : '';
-  const label = sources.length === 1 ? sources[0].table : sources.map(s => s.table).join(op);
+  const label = sources.length === 0 ? ''
+    : sources.length === 1 ? sources[0].table
+    : sources.map(s => s.table).join(op);
   return { kind, sources, label };
 };
 
@@ -1106,13 +1174,13 @@ const Inspector = ({ active, composition, onClose, asisColPool, onSaveOverride, 
         <Row k="Rule"><RuleTag rule={active.rule}/></Row>
         {active.sourceAlias && <Row k="Source table"><SourceAliasTag alias={active.sourceAlias} composition={composition}/></Row>}
         <Row k="Primary key">{active.pk ? <StatusBadge tone="info">yes</StatusBadge> : <span style={{ color: 'var(--text-4)' }}>—</span>}</Row>
+        <Row k="Not null">{active.tgtNullable === false ? <StatusBadge tone="warn">required</StatusBadge> : <span style={{ color: 'var(--text-4)' }}>nullable</span>}</Row>
       </div>
 
       {editing ? (
         <RuleEditor
           active={active}
           asisColPool={asisColPool || []}
-          composition={composition}
           onSave={(override) => { onSaveOverride?.(override); setEditing(false); }}
           onReset={() => { onResetOverride?.(); setEditing(false); }}
           onCancel={() => setEditing(false)}
@@ -1140,10 +1208,12 @@ const Inspector = ({ active, composition, onClose, asisColPool, onSaveOverride, 
 
       <div style={{ padding: '14px', marginTop: 'auto', borderTop: '1px solid var(--border)', display: 'flex', gap: 6 }}>
         {!editing && (
-          <Btn kind="secondary" size="sm" onClick={() => setEditing(true)}>Edit rule</Btn>
+          <Btn kind={active.rule === 'unmapped' ? 'primary' : 'secondary'} size="sm" onClick={() => setEditing(true)}>
+            {active.rule === 'unmapped' ? 'Assign source' : 'Edit rule'}
+          </Btn>
         )}
         {!editing && active.overridden && (
-          <Btn kind="ghost" size="sm" onClick={onResetOverride} title="원래 자동 합성 규칙으로 되돌립니다">Reset to auto</Btn>
+          <Btn kind="ghost" size="sm" onClick={onResetOverride} title="저장된 매핑을 제거하고 unmapped 상태로 되돌립니다">Clear mapping</Btn>
         )}
         <div style={{ flex: 1 }}/>
         <Btn kind="ghost" size="sm" icon={<Ic.ext/>}>Docs</Btn>
@@ -1153,145 +1223,153 @@ const Inspector = ({ active, composition, onClose, asisColPool, onSaveOverride, 
 };
 
 /* ─── RuleEditor ──────────────────────────────────────────────────
-   Manual column-mapping override editor. 5 rule types for Phase 1:
-   rename · transform · constant · drop · auto(reset). Multi-source merge
-   is Phase 2. Editor loads initial state from current row — if the row was
-   already overridden, from the override; otherwise from the auto-synthesized
-   row so the user sees current values before changing. */
+   Single-question editor: how should this TO-BE column be filled?
+   The user picks one of three explicit strategies — an AS-IS source
+   column, NULL, or the DDL DEFAULT. Rename vs transform is auto-decided
+   by the system from type delta + optional SQL expression. */
 
-const RULE_OPTIONS = [
-  { k: 'rename',    l: 'Rename',    desc: '소스 컬럼만 다시 지정' },
-  { k: 'transform', l: 'Transform', desc: '소스 + SQL 변환식' },
-  { k: 'constant',  l: 'Constant',  desc: '고정 값 (AS-IS 소스 없음)' },
-  { k: 'drop',      l: 'Drop',      desc: '이행 대상에서 제외' },
-];
+/* Special select values. Real AS-IS columns use 'col:<name>' to avoid
+   collision with the keywords below. */
+const STRAT_NULL    = '__null__';
+const STRAT_DEFAULT = '__default__';
 
-const RuleEditor = ({ active, asisColPool, composition, onSave, onReset, onCancel }) => {
-  /* Seed editor state from the active row. Map the row's current `rule`
-     back onto our editor rule enum: auto→rename, rule→transform, skip→drop,
-     added+literal srcType→constant. */
-  const seedRule = active.overridden
-    ? (active.rule === 'skip' ? 'drop' : active.srcType === 'literal' ? 'constant' : active.rule === 'rule' ? 'transform' : 'rename')
-    : (active.rule === 'skip' ? 'drop' : active.rule === 'added' ? 'constant' : active.rule === 'rule' ? 'transform' : 'rename');
-  const [ruleType, setRuleType] = React.useState(seedRule);
-  const [sourceColumn, setSourceColumn] = React.useState(active.src && active.src !== '—' && !/\s|\+/.test(active.src) ? active.src : (asisColPool[0]?.name || ''));
+const RuleEditor = ({ active, asisColPool, onSave, onReset, onCancel }) => {
+  const tgtNullable = active.tgtNullable !== false;
+  const ddlDefault = active.ddlDefault || null;
+  const sourcePoolEmpty = (asisColPool || []).length === 0;
+
+  /* Seed from existing override. */
+  const initialKey = (() => {
+    if (!active.overridden) return '';
+    if (active.rule === 'null')    return STRAT_NULL;
+    if (active.rule === 'default') return STRAT_DEFAULT;
+    if (active.src && active.src !== '—' && !/\s|\+/.test(active.src)) return `col:${active.src}`;
+    return '';
+  })();
+  const [strategy, setStrategy] = React.useState(initialKey);
+  const [advancedOpen, setAdvancedOpen] = React.useState(!!(active.overridden && active.transformExpr));
   const [transformExpr, setTransformExpr] = React.useState(
-    active.overridden && active.transformExpr ? active.transformExpr
-    : active.srcType?.includes('YYYYMMDD') ? `TO_DATE(${sourceColumn || 'src'}, 'YYYYMMDD')`
-    : active.srcType?.includes('COMP-3') ? `unpack_comp3(${sourceColumn || 'src'})`
-    : ''
-  );
-  const [constantValue, setConstantValue] = React.useState(
-    active.srcType === 'literal' ? active.src
-    : active.rule === 'added' && active.note?.startsWith('default = ') ? active.note.slice('default = '.length)
-    : "'TODO'"
+    active.overridden && active.transformExpr ? active.transformExpr : ''
   );
   const [note, setNote] = React.useState(active.overridden ? (active.note || '') : '');
 
+  const isCol = strategy.startsWith('col:');
+  const sourceColumn = isCol ? strategy.slice(4) : '';
+  const ac = isCol ? asisColPool.find(c => c.name === sourceColumn) : null;
+  const typeDelta = ac && ac.type !== active.tgtType;
+
   const handleSave = () => {
-    const base = { rule: ruleType, note, editedAt: new Date().toISOString().slice(0, 16).replace('T', ' '), editedBy: 'Admin' };
-    const override =
-      ruleType === 'drop'     ? { ...base }
-    : ruleType === 'constant' ? { ...base, constantValue }
-    : ruleType === 'rename'   ? { ...base, sourceColumn, sourceAlias: (asisColPool.find(c => c.name === sourceColumn)?.source) || null }
-    : /* transform */           { ...base, sourceColumn, sourceAlias: (asisColPool.find(c => c.name === sourceColumn)?.source) || null, transformExpr };
+    if (!strategy) return; /* save disabled when nothing picked */
+    const editMeta = {
+      note,
+      editedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      editedBy: 'Admin',
+    };
+    let override;
+    if (strategy === STRAT_NULL) {
+      override = { rule: 'null', ...editMeta };
+    } else if (strategy === STRAT_DEFAULT) {
+      override = { rule: 'default', ...editMeta };
+    } else {
+      override = {
+        rule: 'auto', /* placeholder; rowFromOverride re-derives auto vs rule */
+        sourceColumn, sourceAlias: ac?.source || null,
+        transformExpr: transformExpr.trim() || null,
+        ...editMeta,
+      };
+    }
     onSave(override);
   };
 
   return (
     <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--panel-2)' }}>
       <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
-        Edit mapping rule
+        Pick mapping strategy
       </div>
 
-      {/* Rule type selector */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Rule type</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-          {RULE_OPTIONS.map(opt => {
-            const active_ = ruleType === opt.k;
-            return (
-              <button key={opt.k} onClick={() => setRuleType(opt.k)}
-                title={opt.desc}
-                style={{
-                  padding: '4px 8px', textAlign: 'left',
-                  border: `1px solid ${active_ ? 'var(--navy)' : 'var(--border)'}`,
-                  background: active_ ? 'var(--navy-50)' : 'var(--panel)',
-                  color: active_ ? 'var(--navy)' : 'var(--text-2)',
-                  fontWeight: active_ ? 600 : 500,
-                  fontSize: 11, borderRadius: 3, cursor: 'pointer',
-                }}>
-                <div>{active_ ? '⦿ ' : '○ '}{opt.l}</div>
-                <div style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1, fontWeight: 400 }}>{opt.desc}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Type-specific inputs */}
-      {(ruleType === 'rename' || ruleType === 'transform') && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Source column</div>
-          <select value={sourceColumn} onChange={e => setSourceColumn(e.target.value)}
-            style={{
-              width: '100%', height: 26, padding: '0 8px',
-              border: '1px solid var(--border)', borderRadius: 3,
-              background: 'var(--panel)', fontFamily: 'var(--mono)',
-              fontSize: 11.5, color: 'var(--text)',
-            }}>
-            {asisColPool.length === 0 && <option value="">(no AS-IS columns available)</option>}
+      <div style={{ marginBottom: 8 }}>
+        <select value={strategy} onChange={e => setStrategy(e.target.value)}
+          style={{
+            width: '100%', height: 28, padding: '0 8px',
+            border: '1px solid var(--border)', borderRadius: 3,
+            background: 'var(--panel)', fontFamily: 'var(--mono)',
+            fontSize: 12, color: 'var(--text)',
+          }}>
+          <option value="">— pick a source or strategy —</option>
+          <optgroup label={sourcePoolEmpty ? 'AS-IS columns (none — bind a source first)' : 'AS-IS columns'}>
             {asisColPool.map(c => (
-              <option key={c.name + (c.source || '')} value={c.name}>
+              <option key={`col:${c.name}:${c.source || ''}`} value={`col:${c.name}`}>
                 {c.source ? `${c.source}.${c.name}` : c.name} · {c.type}
               </option>
             ))}
-          </select>
-        </div>
-      )}
+          </optgroup>
+          <optgroup label="No source">
+            <option value={STRAT_NULL} disabled={!tgtNullable}>
+              Use NULL{!tgtNullable ? ' — disabled (NOT NULL column)' : ''}
+            </option>
+            <option value={STRAT_DEFAULT} disabled={!ddlDefault}>
+              Use DDL default{ddlDefault ? ` — ${ddlDefault}` : ' — disabled (no DEFAULT in DDL)'}
+            </option>
+          </optgroup>
+        </select>
+      </div>
 
-      {ruleType === 'transform' && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Transform expression</div>
-          <textarea value={transformExpr} onChange={e => setTransformExpr(e.target.value)}
-            placeholder="UPPER(TRIM(src))"
-            style={{
-              width: '100%', minHeight: 48, padding: '6px 8px',
-              border: '1px solid var(--border)', borderRadius: 3,
-              background: '#0e1a2b', color: '#cad7e8',
-              fontFamily: 'var(--mono)', fontSize: 11.5,
-              resize: 'vertical',
-            }}/>
-          <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginTop: 3, fontFamily: 'var(--mono)' }}>
-            `src` 를 소스 컬럼 참조자로 쓸 수 있습니다 (`{sourceColumn}` 으로 대체됨)
-          </div>
-        </div>
-      )}
+      {/* Inline preview of the chosen strategy */}
+      <div style={{
+        padding: 8, marginBottom: 10,
+        background: !strategy ? 'var(--gray-50)'
+          : strategy === STRAT_NULL ? 'var(--gray-50)'
+          : strategy === STRAT_DEFAULT ? 'var(--gray-50)'
+          : 'var(--navy-50)',
+        border: `1px solid ${!strategy ? 'var(--border-strong)'
+          : strategy === STRAT_NULL || strategy === STRAT_DEFAULT ? 'var(--border-strong)'
+          : 'var(--navy)'}`,
+        borderRadius: 3,
+        fontSize: 11, color: 'var(--text-2)', lineHeight: 1.55,
+      }}>
+        {!strategy ? (
+          <>전략을 선택해야 매핑이 완료됩니다.</>
+        ) : strategy === STRAT_NULL ? (
+          <><b>NULL</b> 로 채움 · 타입 {active.tgtType} 의 NULL 표현을 자동 사용</>
+        ) : strategy === STRAT_DEFAULT ? (
+          <>DDL default <b style={{ fontFamily: 'var(--mono)' }}>{ddlDefault}</b> 사용</>
+        ) : (
+          <>
+            <b style={{ color: 'var(--navy)' }}>{typeDelta || transformExpr.trim() ? 'Transform' : 'Direct copy'}</b>
+            {typeDelta && !transformExpr.trim() && <> · 타입이 달라 <b>{ac.type}</b> → <b>{active.tgtType}</b> 자동 변환</>}
+            {transformExpr.trim() && <> · 사용자 지정 SQL 식</>}
+          </>
+        )}
+      </div>
 
-      {ruleType === 'constant' && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Constant value</div>
-          <input value={constantValue} onChange={e => setConstantValue(e.target.value)}
-            placeholder="'INTERNAL' or NOW() or 0"
-            style={{
-              width: '100%', height: 26, padding: '0 8px',
-              border: '1px solid var(--border)', borderRadius: 3,
-              background: 'var(--panel)', fontFamily: 'var(--mono)',
-              fontSize: 11.5, color: 'var(--text)',
-            }}/>
-          <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginTop: 3, fontFamily: 'var(--mono)' }}>
-            문자열 값은 따옴표 포함 (예: `'ACTIVE'`), 함수/숫자는 그대로
-          </div>
-        </div>
-      )}
-
-      {ruleType === 'drop' && (
-        <div style={{
-          padding: 8, marginBottom: 8,
-          background: 'var(--red-50)', border: '1px solid var(--red)', borderRadius: 3,
-          fontSize: 11, color: 'var(--red)', lineHeight: 1.5,
-        }}>
-          이 TO-BE 컬럼은 이행 대상에서 제외됩니다. TO-BE 스키마에 NOT NULL 이면 런타임에서 실패할 수 있으니 주의.
+      {/* Advanced — SQL transform expression (only when an AS-IS column is picked) */}
+      {isCol && (
+        <div style={{ marginBottom: 10 }}>
+          <button onClick={() => setAdvancedOpen(o => !o)} style={{
+            border: 'none', background: 'transparent', padding: 0,
+            color: 'var(--text-3)', fontSize: 10.5, cursor: 'pointer',
+            textTransform: 'uppercase', letterSpacing: 0.8,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+          }}>
+            <span style={{ fontSize: 9 }}>{advancedOpen ? '▾' : '▸'}</span>
+            Advanced — SQL 변환식 (optional)
+          </button>
+          {advancedOpen && (
+            <div style={{ marginTop: 6 }}>
+              <textarea value={transformExpr} onChange={e => setTransformExpr(e.target.value)}
+                placeholder={`UPPER(TRIM(${sourceColumn}))`}
+                style={{
+                  width: '100%', minHeight: 48, padding: '6px 8px',
+                  border: '1px solid var(--border)', borderRadius: 3,
+                  background: '#0e1a2b', color: '#cad7e8',
+                  fontFamily: 'var(--mono)', fontSize: 11.5,
+                  resize: 'vertical', boxSizing: 'border-box',
+                }}/>
+              <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginTop: 3, fontFamily: 'var(--mono)' }}>
+                비워두면 시스템이 타입 차이만 보고 자동 변환합니다.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1299,21 +1377,22 @@ const RuleEditor = ({ active, asisColPool, composition, onSave, onReset, onCance
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 4 }}>Note (optional)</div>
         <input value={note} onChange={e => setNote(e.target.value)}
-          placeholder="왜 이렇게 바꿨는지"
+          placeholder="왜 이렇게 매핑했는지"
           style={{
             width: '100%', height: 26, padding: '0 8px',
             border: '1px solid var(--border)', borderRadius: 3,
             background: 'var(--panel)', fontSize: 11.5, color: 'var(--text)',
+            boxSizing: 'border-box',
           }}/>
       </div>
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6 }}>
-        <Btn kind="primary" size="sm" icon={<Ic.check/>} onClick={handleSave}>Save</Btn>
+        <Btn kind="primary" size="sm" icon={<Ic.check/>} onClick={handleSave} disabled={!strategy}>Save</Btn>
         <Btn kind="secondary" size="sm" onClick={onCancel}>Cancel</Btn>
         <div style={{ flex: 1 }}/>
         {active.overridden && (
-          <Btn kind="ghost" size="sm" onClick={onReset}>Reset to auto</Btn>
+          <Btn kind="ghost" size="sm" onClick={onReset}>Clear mapping</Btn>
         )}
       </div>
     </div>
@@ -1326,7 +1405,7 @@ const RuleEditor = ({ active, asisColPool, composition, onSave, onReset, onCance
    information_schema on the active source connection. */
 const ProfileMiniCard = ({ active, composition }) => {
   const data = React.useMemo(() => {
-    if (!active || active.rule === 'added' || active.rule === 'skip') return null;
+    if (!active || active.rule === 'added' || active.rule === 'skip' || active.rule === 'unmapped' || active.rule === 'null' || active.rule === 'default') return null;
     const sources = composition?.sources || [];
     if (sources.length === 0) return null;
     let srcTable;
@@ -1463,6 +1542,9 @@ const buildTransformLines = (r) => {
   const str = (s) => `<span style="color:#9fd9b3">${s}</span>`;
   const cmt = (s) => `<span style="color:#7a8aa6">${s}</span>`;
   const src = r.src;
+  if (r.rule === 'unmapped') return [cmt('-- not mapped yet — open Inspector to pick a strategy')];
+  if (r.rule === 'null') return [cmt('-- explicitly mapped to NULL'), `${kw('NULL')}::${r.tgtType}`];
+  if (r.rule === 'default') return [cmt('-- explicitly mapped to DDL DEFAULT'), `${kw('DEFAULT')}`];
   if (r.rule === 'skip') return [cmt('-- column is dropped from TO-BE'), `${kw('DROP')}(${src})`];
   if (r.rule === 'added') {
     if (r.note && r.note.startsWith('merge')) {
@@ -1502,7 +1584,7 @@ const buildTransformLines = (r) => {
 
 const SamplePreview = ({ active }) => {
   const samples = React.useMemo(() => {
-    if (!active || active.rule === 'skip') return null;
+    if (!active || active.rule === 'skip' || active.rule === 'unmapped' || active.rule === 'null' || active.rule === 'default') return null;
     const key = active.src;
     const bank = (window.SAMPLE_SOURCE_ROWS || {});
     const raw = bank[key] || bank._default || [];
@@ -1569,10 +1651,11 @@ const SamplePreview = ({ active }) => {
 
 /* ─── AS-IS table detail (read-only schema + routing info) ──────── */
 
-const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVersion, hasTobe, onJumpToTobe }) => {
+const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVersion, overridesVersion, hasTobe, onJumpToTobe }) => {
   /* Columns come from the canonical ASIS_COLUMN_SCHEMA (DDL parse result),
      independent of bindings. Routing and Maps-to info DO depend on current
-     sd.sources and must re-compute when bindingsVersion bumps. */
+     sd.sources and the active override set, so they re-compute when either
+     bindingsVersion or overridesVersion bumps. */
   const columns = (window.ASIS_COLUMN_SCHEMA || {})[tableName] || [];
   const [subTab, setSubTab] = React.useState('columns');
   React.useEffect(() => { setSubTab('columns'); }, [tableName]);
@@ -1580,31 +1663,41 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
   const info = React.useMemo(() => {
     const diffs = window.SCHEMA_DIFF || [];
     const routing = [];
+    /* destByColumn is derived from the actual mapping rows (which include
+       overrides + merges), NOT from the static SCHEMA_DIFF.renameFrom hint.
+       Without an override or merge, a TO-BE column is 'unmapped' and contributes
+       no routing. */
     const destByColumn = new Map(); // asisColName -> [{tobeTable, tobeCol, kind, internalName}]
+    const colNames = new Set(columns.map(c => c.name));
     diffs.forEach(sd => {
-      const sources = sd.sources || (sd.asis ? [{ table: sd.asis, alias: null, role: 'primary' }] : []);
+      const sources = sd.sources || [];
       const src = sources.find(s => s.table === tableName);
       if (!src) return;
       routing.push({ to: sd.tobe, via: sd.table, role: src.role });
-      sd.tobeCols.forEach(tc => {
-        if (tc.renameFrom && columns.some(c => c.name === tc.renameFrom)) {
-          const list = destByColumn.get(tc.renameFrom) || [];
-          list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'rename', internalName: sd.table });
-          destByColumn.set(tc.renameFrom, list);
-        }
-        if (tc.mergedFrom) {
-          tc.mergedFrom.forEach(mf => {
-            if (columns.some(c => c.name === mf)) {
+      const rows = window.getColumnMappings ? window.getColumnMappings(sd.table) : null;
+      if (!rows) return;
+      rows.forEach(r => {
+        if (r.rule === 'unmapped' || r.rule === 'skip') return;
+        if (r.srcType === 'multi' && typeof r.src === 'string' && r.src.includes('+')) {
+          r.src.split('+').map(s => s.trim()).forEach(mf => {
+            if (colNames.has(mf)) {
               const list = destByColumn.get(mf) || [];
-              list.push({ tobeTable: sd.tobe, tobeCol: tc.name, kind: 'merge', internalName: sd.table });
+              list.push({ tobeTable: sd.tobe, tobeCol: r.tgt, kind: 'merge', internalName: sd.table });
               destByColumn.set(mf, list);
             }
           });
+          return;
+        }
+        if (r.rule === 'added') return;
+        if (r.src && colNames.has(r.src)) {
+          const list = destByColumn.get(r.src) || [];
+          list.push({ tobeTable: sd.tobe, tobeCol: r.tgt, kind: 'rename', internalName: sd.table });
+          destByColumn.set(r.src, list);
         }
       });
     });
     return { routing, destByColumn };
-  }, [tableName, bindingsVersion, columns]);
+  }, [tableName, bindingsVersion, overridesVersion, columns]);
 
   /* Route-to-TO-BE picker — inverse of Add source in CollapsibleBinding.
      Selecting a TO-BE appends this AS-IS as a source to that TO-BE's binding. */
@@ -1751,26 +1844,75 @@ const AsisTableDetail = ({ tableName, tobeInventory, updateBinding, bindingsVers
             이 AS-IS 테이블은 아직 어느 TO-BE 테이블에도 연결되어 있지 않습니다.
             [Route to TO-BE…] 로 이행 대상을 지정하세요.
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {info.routing.map((r, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '4px 8px',
-                border: '1px solid var(--border)', borderRadius: 3, background: 'var(--panel)',
-                fontFamily: 'var(--mono)', fontSize: 11.5,
-              }}>
-                <span style={{ color: 'var(--text-2)' }}>{tableName.split('.').pop()}</span>
-                <span style={{ color: 'var(--text-4)' }}><Ic.arrow/></span>
-                <span style={{ color: 'var(--navy)', fontWeight: 500 }}>{r.to}</span>
-                <span style={{ flex: 1 }}/>
-                <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
-                  {r.role === 'primary' ? 'primary' : r.role === 'union' ? 'UNION' : 'JOIN'}
-                </span>
+        ) : (() => {
+          /* Resolve each routing target's WHERE filter, then warn if this AS-IS
+             splits to multiple TO-BE tables without proper coverage. */
+          const routesWithWhere = info.routing.map(r => ({
+            ...r, where: window.getSchemaDiff?.(r.via)?.whereFilter || '',
+          }));
+          const splitMode = routesWithWhere.length > 1;
+          const missingWhere = routesWithWhere.filter(r => !r.where);
+          /* Heuristic mock coverage: if all WHERE present, assume 95% covered;
+             missing WHERE → duplication risk; partial → gap warning. */
+          const dupRisk = splitMode && missingWhere.length > 0;
+          const fullyFiltered = splitMode && missingWhere.length === 0;
+          return (
+            <>
+              {dupRisk && (
+                <div style={{
+                  marginBottom: 6, padding: 8, borderRadius: 3,
+                  background: 'var(--red-50)', border: '1px solid var(--red)',
+                  fontSize: 11, color: 'var(--red)', lineHeight: 1.5,
+                }}>
+                  ⚠ <b>Duplication risk:</b> 이 AS-IS 가 {routesWithWhere.length} 개 TO-BE 로 split 되는데 일부에 WHERE 없음 — 같은 행이 여러 TO-BE 에 중복 들어갈 수 있어요. 각 TO-BE 의 Table binding 에서 WHERE 를 정의하세요.
+                </div>
+              )}
+              {fullyFiltered && (
+                <div style={{
+                  marginBottom: 6, padding: 8, borderRadius: 3,
+                  background: 'var(--amber-50)', border: '1px dashed var(--amber)',
+                  fontSize: 11, color: 'var(--amber)', lineHeight: 1.5,
+                }}>
+                  <b>Coverage check (mock):</b> {routesWithWhere.length} 개 TO-BE 모두 WHERE 정의됨. 합집합이 전체 rows 를 100% 덮는지 확인 — 누락된 행은 어느 TO-BE 에도 가지 않습니다.
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {routesWithWhere.map((r, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                    padding: '4px 8px',
+                    border: '1px solid var(--border)', borderRadius: 3, background: 'var(--panel)',
+                    fontFamily: 'var(--mono)', fontSize: 11.5,
+                  }}>
+                    <span style={{ color: 'var(--text-2)' }}>{tableName.split('.').pop()}</span>
+                    <span style={{ color: 'var(--text-4)' }}><Ic.arrow/></span>
+                    <span style={{ color: 'var(--navy)', fontWeight: 500 }}>{r.to}</span>
+                    {r.where && (
+                      <span title={`WHERE: ${r.where}`} style={{
+                        padding: '1px 6px', borderRadius: 2,
+                        background: 'var(--amber-50)', color: 'var(--amber)',
+                        border: '1px solid var(--amber)',
+                        fontSize: 10, fontWeight: 600, letterSpacing: 0.2,
+                      }}>WHERE {r.where.length > 40 ? r.where.slice(0, 40) + '…' : r.where}</span>
+                    )}
+                    {!r.where && splitMode && (
+                      <span style={{
+                        padding: '1px 6px', borderRadius: 2,
+                        background: 'var(--red-50)', color: 'var(--red)',
+                        border: '1px solid var(--red)',
+                        fontSize: 10, fontWeight: 600,
+                      }}>no WHERE</span>
+                    )}
+                    <span style={{ flex: 1 }}/>
+                    <span style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                      {r.role === 'primary' ? 'primary' : r.role === 'union' ? 'UNION' : 'JOIN'}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Sub-tabs: Columns / Samples / Profile */}
