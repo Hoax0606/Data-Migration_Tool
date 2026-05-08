@@ -7,12 +7,12 @@ const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDel
   const setSection = onSectionChange ?? setLocalSection;
 
   const sections = [
-    { k: 'general',  l: 'General',        d: 'Name, steward, environment' },
-    { k: 'source',   l: 'Source',         d: 'Legacy system connection' },
-    { k: 'target',   l: 'Target',         d: 'Destination DB & encoding' },
-    { k: 'schedule', l: 'Schedule',        d: 'Nightly rehearsal · cutover · external trigger' },
-    { k: 'notify',   l: 'Notifications',  d: 'Slack, email, webhooks' },
-    { k: 'danger',   l: 'Danger zone',    d: 'Delete project',   danger: true },
+    { k: 'general',  l: 'General',        d: '프로젝트 이름·환경·생성일' },
+    { k: 'source',   l: 'AS-IS',          d: 'AS-IS DDL · 추출 데이터 · 도구 내장 DB' },
+    { k: 'target',   l: 'TO-BE',          d: '대상 DB · 인코딩 · 자격증명' },
+    { k: 'schedule', l: 'Schedule',       d: '야간 리허설 · 컷오버 · 외부 트리거' },
+    { k: 'notify',   l: 'Notifications',  d: '인앱 알림 이벤트 구독' },
+    { k: 'danger',   l: 'Danger zone',    d: '프로젝트 삭제 등 위험 동작',   danger: true },
   ];
 
   return (
@@ -57,7 +57,7 @@ const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDel
 
       <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '18px 26px 40px' }}>
         {section === 'general'  && <PSGeneral  project={project} onRename={onRename}/>}
-        {section === 'source'   && <PSSource   project={project} onDdlChange={onDdlChange} onTestConnection={onTestConnection} onCredentialsChange={onCredentialsChange} onSimulateFail={onSimulateFail}/>}
+        {section === 'source'   && <PSSource   project={project} onDdlChange={onDdlChange}/>}
         {section === 'target'   && <PSTarget   project={project} onDdlChange={onDdlChange} onTestConnection={onTestConnection} onCredentialsChange={onCredentialsChange} onSimulateFail={onSimulateFail}/>}
         {section === 'schedule' && <PSSchedule project={project}/>}
         {section === 'notify'   && <PSNotify notifEnabled={notifEnabled}/>}
@@ -79,14 +79,14 @@ const PSGeneral = ({ project, onRename }) => {
   const [env, setEnv] = React.useState(project.env || 'stg');
   return (
     <>
-      <PSHead title="General" desc="Basic metadata for this project."
-        actions={<Btn kind="primary" size="sm" onClick={() => onRename?.(name)}>Save changes</Btn>}/>
+      <PSHead title="General" desc="이 프로젝트의 기본 메타정보."
+        actions={<Btn kind="primary" size="sm" onClick={() => onRename?.(name)}>저장</Btn>}/>
       <PSCard>
-        <PSRow label="Project name"><PSInput value={name} onChange={setName}/></PSRow>
-        <PSRow label="Client" hint="Tenant division that owns this project.">
+        <PSRow label="프로젝트 이름"><PSInput value={name} onChange={setName}/></PSRow>
+        <PSRow label="고객사" hint="이 프로젝트가 속한 사이트·도메인.">
           <PSInput value="KDB Bank · Core Banking" mono/>
         </PSRow>
-        <PSRow label="Environment">
+        <PSRow label="환경 라벨" hint="대상 TO-BE DB 가 속한 환경 — dev / stg / prod.">
           <div style={{ display: 'flex', gap: 6 }}>
             {['dev','stg','prod'].map(e => (
               <button key={e} onClick={() => setEnv(e)}
@@ -100,50 +100,225 @@ const PSGeneral = ({ project, onRename }) => {
             ))}
           </div>
         </PSRow>
-        <PSRow label="Created"><PSInput value="2026-02-11 14:20 KST" readOnly mono/></PSRow>
+        <PSRow label="생성일"><PSInput value="2026-02-11 14:20 KST" readOnly mono/></PSRow>
       </PSCard>
     </>
   );
 };
 
-const PSSource = ({ project, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail }) => {
-  const conn = project.connections?.asis;
-  const testing = conn?.status === 'testing';
+/* AS-IS 측은 더 이상 JDBC 직접 접속이 아니라 다음 흐름:
+     운영팀 야간 추출 → CSV 도착 → 도구 내장 DuckDB staging 에 raw 적재 →
+     ASIS DDL 과 컬럼·길이 비교 → 매핑 단계에서 변환.
+   따라서 PSSource 는 3 카드 구조: ASIS DDL · CSV 파일 · Staging (DuckDB).
+   host/port/user/password 같은 외부 DB 입력은 노출하지 않는다. */
+const PSSource = ({ project, onDdlChange }) => {
   return (
     <>
-      <PSHead title="Source" desc="Legacy system this project reads from."
-        actions={
-          <Btn kind="secondary" size="sm"
-            disabled={testing}
-            icon={testing ? <Ic.spinner/> : null}
-            onClick={() => onTestConnection?.('asis')}>
-            {testing ? 'Testing…' : 'Test connection'}
-          </Btn>
-        }/>
-      <PSCard>
-        <PSRow label="System"><PSInput value={project.src || 'Mainframe · EBCDIC VSAM'} readOnly mono/></PSRow>
-        <PSRow label="Host / path"><PSInput value="mvs-prod.kdb.internal:/vol/mig/CORE/*.dat" mono/></PSRow>
-        <PSRow label="Source encoding"><PSInput value="IBM-933 (EBCDIC-KO)" mono/></PSRow>
-        <PSRow label="Record length"><PSInput value="512" mono suffix="bytes" width={120}/></PSRow>
-        <PSRow label="Copybook"><PSInput value="copybook/CIF_MSTR.cpy · 142 fields" mono/></PSRow>
-        <PSRow label="Read-only guarantee"><PSToggle on={true} label="Source opened in read-only mode"/></PSRow>
-      </PSCard>
-
-      <ConnectionStatusCard connection={conn}
-        onRetry={() => onTestConnection?.('asis')}
-        onSimulateFail={() => onSimulateFail?.('asis')}/>
-
-      <CredsCard connection={conn} onChange={(c) => onCredentialsChange?.('asis', c)}/>
+      <PSHead title="AS-IS" desc="AS-IS DDL · 야간 추출 데이터 · 도구 내장 DB."/>
 
       <DdlCard
-        title="AS-IS schema (DDL)"
-        desc="Import the source schema so the Mapping tab can list tables and columns."
+        title="AS-IS DDL"
+        desc="AS-IS 시스템의 스키마. 매핑 탭의 컬럼 목록 기준이 됩니다."
         side="asis"
         current={project.ddl?.asis}
         onChange={(v) => onDdlChange?.('asis', v)}
       />
+
+      <CsvSourceCard csv={project.csvSource}/>
+
+      <StagingCard staging={project.staging} csv={project.csvSource}/>
     </>
   );
+};
+
+/* ─── Source files (CSV) ────────────────────────────────────────
+   야간 추출 파일의 메타데이터 (filename, encoding, delimiter, recordLength,
+   parseStatus, recordCount). 운영팀이 SFTP/배치로 떨어뜨려 놓는 파일을
+   도구가 받아 파싱하는 시나리오. */
+const CsvSourceCard = ({ csv }) => {
+  if (!csv) {
+    return (
+      <div style={{
+        border: '1px solid var(--amber)', borderRadius: 4,
+        background: 'var(--amber-50)', marginBottom: 14,
+        padding: '12px 14px',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3 }}>AS-IS 추출 데이터 (CSV)</div>
+        <div style={{ fontSize: 11, color: 'var(--text-2)' }}>
+          추출 파일이 아직 등록되지 않았습니다. 운영팀의 야간 추출 파일 경로를 등록하면 도착 후 자동으로 파싱됩니다.
+        </div>
+      </div>
+    );
+  }
+  const ps = csv.parseStatus;
+  const tone = ps === 'ok' ? 'ok' : ps === 'failed' ? 'err' : ps === 'pending' ? 'warn' : 'queued';
+  const label = ps === 'ok' ? '파싱 완료' : ps === 'failed' ? '파싱 실패' : ps === 'pending' ? '파싱 대기' : '미도착';
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: 4,
+      background: 'var(--panel)', marginBottom: 14,
+    }}>
+      <div style={{ padding: '10px 14px 9px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
+            AS-IS 추출 데이터 (CSV)
+            <StatusBadge tone={tone}>{label}</StatusBadge>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
+            운영팀 야간 추출 파일. 도구가 받아 AS-IS DB 에 원본 그대로 적재합니다.
+          </div>
+        </div>
+        <Btn kind="secondary" size="sm"
+          title="새 추출 파일이 도착했을 때 다시 등록합니다.">
+          파일 재업로드
+        </Btn>
+        <Btn kind="secondary" size="sm"
+          title="인코딩·구분자·헤더 등 파싱 설정을 변경한 후 다시 파싱합니다. AS-IS DB 도 처음부터 다시 적재됩니다.">
+          재파싱
+        </Btn>
+      </div>
+
+      <div style={{ padding: '12px 14px' }}>
+        <PSRow label="파일명"><PSInput value={csv.filename || '—'} readOnly mono/></PSRow>
+        <PSRow label="도착 시각"><PSInput value={csv.arrivedAt || '— (미도착)'} readOnly mono/></PSRow>
+        <PSRow label="인코딩"><PSInput value={csv.encoding} readOnly mono/></PSRow>
+        <PSRow label="구분자" hint={csv.delimiter === 'FB' ? '고정폭 (메인프레임)' : '텍스트 구분자'}>
+          <PSInput value={csv.delimiter === 'FB' ? 'FB · 고정폭' : csv.delimiter === '\t' ? '\\t (Tab)' : csv.delimiter} readOnly mono width={180}/>
+        </PSRow>
+        {csv.delimiter === 'FB' && (
+          <PSRow label="레코드 길이"><PSInput value={String(csv.recordLength || '—')} readOnly mono suffix="bytes" width={140}/></PSRow>
+        )}
+        <PSRow label="헤더 행 포함"><PSInput value={csv.hasHeader ? '있음' : '없음'} readOnly mono width={100}/></PSRow>
+        {ps === 'ok' && csv.recordCount != null && (
+          <PSRow label="레코드 수">
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
+              {csv.recordCount.toLocaleString()} 행
+            </span>
+          </PSRow>
+        )}
+      </div>
+
+      {ps === 'failed' && csv.parseError && (
+        <div style={{
+          margin: '0 14px 12px',
+          border: '1px solid var(--red)', background: 'var(--red-50)',
+          borderRadius: 3, padding: '8px 10px',
+          fontSize: 11.5, color: 'var(--red)', fontFamily: 'var(--mono)',
+        }}>
+          파싱 오류 · {csv.parseError}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── AS-IS DB (도구 내장) ──────────────────────────────────────
+   추출된 CSV 를 raw 그대로 적재하는 도구 내장 DB (구현체: DuckDB).
+   사용자 입장에서는 AS-IS DB 와 동일하게 다뤄지며, host/port 같은 외부
+   인프라 설정은 노출되지 않는다. */
+const StagingCard = ({ staging, csv }) => {
+  if (!staging) {
+    return (
+      <div style={{
+        border: '1px solid var(--border)', borderRadius: 4,
+        background: 'var(--panel)', marginBottom: 14,
+        padding: '12px 14px',
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 3,
+          display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: 14 }}>📦</span>
+          AS-IS DB (도구 내장)
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+          AS-IS DB 가 아직 초기화되지 않았습니다. 추출 데이터(CSV) 도착 후 자동으로 적재됩니다.
+        </div>
+      </div>
+    );
+  }
+  const sm = staging.schemaMatch;
+  const smTone = sm === 'ok' ? 'ok' : sm === 'mismatch' ? 'err' : 'warn';
+  const smLabel = sm === 'ok' ? '스키마 일치' : sm === 'mismatch' ? '스키마 불일치' : '스키마 검증 대기';
+  const loadedTone = staging.loaded ? 'ok' : 'queued';
+  const loadedLabel = staging.loaded ? '적재 완료' : '미적재';
+  const dr = staging.dbReady;
+  const drTone = dr === 'ok' ? 'ok' : dr === 'failed' ? 'err' : 'queued';
+  const drLabel = dr === 'ok' ? '접근 가능' : dr === 'failed' ? '접근 실패' : '접근 검증 대기';
+  const canLoad = csv?.parseStatus === 'ok';
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: 4,
+      background: 'var(--panel)', marginBottom: 14,
+    }}>
+      <div style={{ padding: '10px 14px 9px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14 }}>📦</span>
+            AS-IS DB (도구 내장)
+            <StatusBadge tone={loadedTone}>{loadedLabel}</StatusBadge>
+            <StatusBadge tone={drTone}>{drLabel}</StatusBadge>
+            <StatusBadge tone={smTone}>{smLabel}</StatusBadge>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
+            추출된 CSV 를 원본 그대로 적재하는 임베디드 DB — 호스트·자격증명 설정 없이 도구가 알아서 처리합니다.
+          </div>
+        </div>
+        <Btn kind="secondary" size="sm" disabled={!canLoad} title={canLoad ? '' : 'CSV 파싱 완료 후 가능'}>CSV 재적재</Btn>
+        <Btn kind="secondary" size="sm" disabled={!staging.loaded}
+          title="DB 파일 열기·메타테이블 조회 무결성을 즉시 확인합니다 (Run 시작 시 자동 검증과 동일).">
+          접근 가능 재검증
+        </Btn>
+        <Btn kind="secondary" size="sm" disabled={!staging.loaded}>스키마 보기</Btn>
+      </div>
+
+      <div style={{ padding: '12px 14px' }}>
+        <PSRow label="저장 경로"><PSInput value={staging.store || '—'} readOnly mono/></PSRow>
+        <PSRow label="저장 용량">
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
+            {formatBytes(staging.storeSizeBytes)}
+          </span>
+        </PSRow>
+        <PSRow label="적재 테이블 수">
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-2)' }}>
+            {staging.tables ?? 0} 개
+          </span>
+        </PSRow>
+        <PSRow label="적재 완료 시각"><PSInput value={staging.loadedAt || '—'} readOnly mono/></PSRow>
+      </div>
+
+      {dr === 'failed' && (
+        <div style={{
+          margin: '0 14px 8px',
+          border: '1px solid var(--red)', background: 'var(--red-50)',
+          borderRadius: 3, padding: '8px 10px',
+          fontSize: 11.5, color: 'var(--red)', fontFamily: 'var(--mono)',
+        }}>
+          DB 파일 접근 실패 · {staging.dbReadyDetail || '손상·잠금·권한 확인 필요'}
+        </div>
+      )}
+
+      {sm === 'mismatch' && staging.schemaMismatchDetail && (
+        <div style={{
+          margin: '0 14px 12px',
+          border: '1px solid var(--red)', background: 'var(--red-50)',
+          borderRadius: 3, padding: '8px 10px',
+          fontSize: 11.5, color: 'var(--red)', fontFamily: 'var(--mono)',
+        }}>
+          스키마 불일치 · {staging.schemaMismatchDetail}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* Helper — bytes → human-readable. null/undefined 면 '—' 반환. */
+const formatBytes = (n) => {
+  if (n == null) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 };
 
 const PSTarget = ({ project, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail }) => {
@@ -151,23 +326,23 @@ const PSTarget = ({ project, onDdlChange, onTestConnection, onCredentialsChange,
   const testing = conn?.status === 'testing';
   return (
     <>
-      <PSHead title="Target" desc="Destination database for migrated data."
+      <PSHead title="TO-BE" desc="이행 대상 데이터베이스."
         actions={
           <Btn kind="secondary" size="sm"
             disabled={testing}
             icon={testing ? <Ic.spinner/> : null}
             onClick={() => onTestConnection?.('tobe')}>
-            {testing ? 'Testing…' : 'Test connection'}
+            {testing ? '연결 테스트 중…' : '연결 테스트'}
           </Btn>
         }/>
       <PSCard>
-        <PSRow label="System"><PSInput value={project.tgt || 'PostgreSQL 15'} readOnly mono/></PSRow>
-        <PSRow label="Host"><PSInput value="pg-core-01.kdb.internal:5432" mono/></PSRow>
-        <PSRow label="Database"><PSInput value="core_banking" mono/></PSRow>
-        <PSRow label="Schema"><PSInput value="public" mono/></PSRow>
-        <PSRow label="Target encoding"><PSInput value="UTF-8" mono/></PSRow>
-        <PSRow label="Collation"><PSInput value="ko_KR.UTF-8" mono/></PSRow>
-        <PSRow label="SSL mode"><PSInput value="verify-full · corp-ca-2024" readOnly mono/></PSRow>
+        <PSRow label="DB 종류"><PSInput value={project.tgt || 'PostgreSQL 15'} readOnly mono/></PSRow>
+        <PSRow label="호스트"><PSInput value="pg-core-01.kdb.internal:5432" mono/></PSRow>
+        <PSRow label="데이터베이스"><PSInput value="core_banking" mono/></PSRow>
+        <PSRow label="스키마"><PSInput value="public" mono/></PSRow>
+        <PSRow label="인코딩"><PSInput value="UTF-8" mono/></PSRow>
+        <PSRow label="콜레이션"><PSInput value="ko_KR.UTF-8" mono/></PSRow>
+        <PSRow label="SSL 모드"><PSInput value="verify-full · corp-ca-2024" readOnly mono/></PSRow>
       </PSCard>
 
       <ConnectionStatusCard connection={conn}
@@ -177,8 +352,8 @@ const PSTarget = ({ project, onDdlChange, onTestConnection, onCredentialsChange,
       <CredsCard connection={conn} onChange={(c) => onCredentialsChange?.('tobe', c)}/>
 
       <DdlCard
-        title="TO-BE schema (DDL)"
-        desc="Import the target schema to enable mapping and DDL artifact generation."
+        title="TO-BE DDL"
+        desc="대상 스키마. 매핑·DDL 산출물 생성의 기준이 됩니다."
         side="tobe"
         current={project.ddl?.tobe}
         onChange={(v) => onDdlChange?.('tobe', v)}

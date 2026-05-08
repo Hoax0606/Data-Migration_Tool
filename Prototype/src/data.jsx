@@ -7,7 +7,8 @@ const TENANT = 'KDB Bank';
    Demonstrates all four import states across the seeded project list. */
 const ddlMeta = (filename, date, tables, columns) => ({ filename, uploadedAt: date, tables, columns });
 
-/* Connection state per side. Mocked — real tool would test TCP/DB protocol. */
+/* Connection state — TO-BE only (JDBC). AS-IS 측은 더 이상 직접 접속하지 않고
+   CSV → DuckDB staging 으로 처리한다. Mocked — real tool would test TCP/DB protocol. */
 const connMeta = (status, opts = {}) => ({
   status, // 'ok' | 'failed' | 'stale' | 'untested' | 'testing'
   lastTestedAt: opts.lastTestedAt ?? (status === 'ok' ? '2 hr ago' : status === 'stale' ? '3 days ago' : status === 'failed' ? '5 min ago' : null),
@@ -20,6 +21,38 @@ const connMeta = (status, opts = {}) => ({
     passwordSet: opts.passwordSet !== false,
     lastRotated: opts.lastRotated ?? '2026-03-15',
   },
+});
+
+/* CSV source descriptor — 야간 추출 파일 메타. delimiter='FB' 면 메인프레임
+   고정-블록(record length) 파일, 그 외에는 일반 텍스트 구분자. */
+const csvMeta = (opts = {}) => ({
+  filename: opts.filename ?? 'extract.csv',
+  encoding: opts.encoding ?? 'UTF-8',
+  delimiter: opts.delimiter ?? ',',
+  recordLength: opts.recordLength ?? null,
+  hasHeader: opts.hasHeader ?? false,
+  arrivedAt: opts.arrivedAt ?? null,
+  parseStatus: opts.parseStatus ?? 'untested',  // 'ok' | 'failed' | 'pending' | 'untested'
+  recordCount: opts.recordCount ?? null,
+  parseError: opts.parseError ?? null,
+});
+
+/* Staging descriptor — 도구 내장 DuckDB. 외부 host/port 같은 인프라 설정은
+   사용자에게 노출하지 않는다 (도구가 알아서 처리). */
+const stagingMeta = (opts = {}) => ({
+  store: opts.store ?? null,
+  storeSizeBytes: opts.storeSizeBytes ?? null,
+  tables: opts.tables ?? 0,
+  loaded: opts.loaded ?? false,
+  loadedAt: opts.loadedAt ?? null,
+  schemaMatch: opts.schemaMatch ?? 'pending',  // 'ok' | 'mismatch' | 'pending'
+  schemaMismatchDetail: opts.schemaMismatchDetail ?? null,
+  /* dbReady — 적재된 AS-IS DB 가 *현재* 읽을 수 있는 상태인지.
+     'ok' = 파일 열기·메타테이블 조회 OK
+     'failed' = 파일 손상·잠금·권한 등 접근 실패 (운영 트러블 시)
+     'pending' = 아직 적재 안 됨 (loaded=false 일 때 자동) */
+  dbReady: opts.dbReady ?? (opts.loaded ? 'ok' : 'pending'),
+  dbReadyDetail: opts.dbReadyDetail ?? null,
 });
 
 /* Project lifecycle phase — reflects the 6-phase real-world migration flow.
@@ -43,43 +76,63 @@ const cutoverMeta = (dday, freezeHours, rollbackSla) => ({ dday, freezeHours, ro
 const PROJECTS = [
   { id: 'p1', name: '계정원장',           client: TENANT, tables: 142, status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
     ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) },
-    connections: { asis: connMeta('ok', { latencyMs: 42, detectedTables: 142 }), tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) },
+    csvSource: csvMeta({ filename: 'core_extract_2026-04-22.csv', encoding: 'EBCDIC-KANA', delimiter: 'FB', recordLength: 512, hasHeader: false, arrivedAt: '2026-04-22 03:15', parseStatus: 'ok', recordCount: 18_442_331 }),
+    staging: stagingMeta({ store: 'data/staging/p1.duckdb', storeSizeBytes: 1_200_000_000, tables: 142, loaded: true, loadedAt: '2026-04-22 04:20', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) },
     cutover: cutoverMeta('2026-05-15 22:00 KST', 24, 15) },
   { id: 'p2', name: '수신원장',           client: TENANT, tables: 87,  status: 'waiting', phase: 'sign-off',  src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
     ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) },
-    connections: { asis: connMeta('ok', { latencyMs: 31, detectedTables: 87 }), tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) },
+    csvSource: csvMeta({ filename: 'deposit_extract_2026-04-21.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, arrivedAt: '2026-04-21 02:48', parseStatus: 'ok', recordCount: 9_412_330 }),
+    staging: stagingMeta({ store: 'data/staging/p2.duckdb', storeSizeBytes: 612_000_000, tables: 87, loaded: true, loadedAt: '2026-04-21 03:55', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) },
     cutover: cutoverMeta('2026-05-17 22:00 KST', 24, 20) },
   { id: 'p3', name: '외환',               client: TENANT, tables: 34,  status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
     ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null },
-    connections: { asis: connMeta('stale', { latencyMs: 78, detectedTables: 34 }), tobe: connMeta('untested') },
+    csvSource: csvMeta({ filename: 'fx_extract_2026-04-22.dat', encoding: 'EBCDIC-KANA', delimiter: 'FB', recordLength: 384, hasHeader: false, arrivedAt: '2026-04-22 03:08', parseStatus: 'pending' }),
+    staging: stagingMeta({ store: 'data/staging/p3.duckdb', loaded: false, schemaMatch: 'pending' }),
+    connections: { tobe: connMeta('untested') },
     cutover: cutoverMeta('2026-06-14 20:00 KST', 12, 30) },
   { id: 'p4', name: '여신',               client: TENANT, tables: 61,  status: 'waiting', phase: 'analysis',  src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
     ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) },
-    connections: { asis: connMeta('untested'), tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) },
+    csvSource: csvMeta({ filename: 'loan_extract_2026-04-22.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, arrivedAt: null, parseStatus: 'untested' }),
+    staging: stagingMeta({ store: 'data/staging/p4.duckdb', loaded: false, schemaMatch: 'pending' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) },
     cutover: cutoverMeta('2026-06-28 22:00 KST', 24, 30) },
   { id: 'p5', name: '카드승인',           client: TENANT, tables: 28,  status: 'done',    phase: 'hypercare', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
     ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) },
-    connections: { asis: connMeta('ok', { latencyMs: 38, detectedTables: 28 }), tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) },
+    csvSource: csvMeta({ filename: 'card_extract_2026-03-01.dat', encoding: 'EBCDIC-KANA', delimiter: 'FB', recordLength: 256, hasHeader: false, arrivedAt: '2026-03-01 02:50', parseStatus: 'ok', recordCount: 142_882_004 }),
+    staging: stagingMeta({ store: 'data/staging/p5.duckdb', storeSizeBytes: 8_400_000_000, tables: 28, loaded: true, loadedAt: '2026-03-01 04:12', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) },
     cutover: cutoverMeta('2026-03-14 22:00 KST', 24, 15) },
   { id: 'p6', name: '총계정원장',         client: TENANT, tables: 113, status: 'done',    phase: 'done',      src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
     ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) },
-    connections: { asis: connMeta('ok', { latencyMs: 27, detectedTables: 113 }), tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) },
+    csvSource: csvMeta({ filename: 'gl_extract_2026-02-08.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, arrivedAt: '2026-02-08 02:35', parseStatus: 'ok', recordCount: 101_102_421 }),
+    staging: stagingMeta({ store: 'data/staging/p6.duckdb', storeSizeBytes: 4_800_000_000, tables: 113, loaded: true, loadedAt: '2026-02-08 03:42', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) },
     cutover: cutoverMeta('2026-02-28 20:00 KST', 18, 20) },
   { id: 'p7', name: '무역금융',           client: TENANT, tables: 19,  status: 'done',    phase: 'done',      src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
     ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) },
-    connections: { asis: connMeta('ok', { latencyMs: 55, detectedTables: 19 }), tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) },
+    csvSource: csvMeta({ filename: 'trade_extract_2026-01-24.dat', encoding: 'EUC-KR', delimiter: 'FB', recordLength: 512, hasHeader: false, arrivedAt: '2026-01-24 03:01', parseStatus: 'ok', recordCount: 4_280_115 }),
+    staging: stagingMeta({ store: 'data/staging/p7.duckdb', storeSizeBytes: 280_000_000, tables: 19, loaded: true, loadedAt: '2026-01-24 03:48', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) },
     cutover: cutoverMeta('2026-02-02 22:00 KST', 12, 20) },
   { id: 'p8', name: '송금허브',           client: TENANT, tables: 0,   status: 'waiting', phase: 'planning',  src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
     ddl: { asis: null, tobe: null },
-    connections: { asis: connMeta('untested'), tobe: connMeta('untested') },
+    csvSource: null,
+    staging: null,
+    connections: { tobe: connMeta('untested') },
     cutover: cutoverMeta('TBD', 24, 30) },
   { id: 'p9', name: '인터넷뱅킹',         client: TENANT, tables: 52,  status: 'running', phase: 'cutover',   src: 'WebSphere · DB2',    tgt: 'Spring Boot · PostgreSQL 15', updated: 'just now',
     ddl: { asis: ddlMeta('ib-db2.sql',            '2026-04-12 09:30',  52,  712), tobe: ddlMeta('ib-pg15.sql',         '2026-04-12 14:15',  52,  712) },
-    connections: { asis: connMeta('ok', { latencyMs: 25, detectedTables: 52 }), tobe: connMeta('ok', { latencyMs: 17, detectedTables: 52 }) },
+    csvSource: csvMeta({ filename: 'ib_extract_2026-04-12.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, arrivedAt: '2026-04-12 02:55', parseStatus: 'ok', recordCount: 24_882_440 }),
+    staging: stagingMeta({ store: 'data/staging/p9.duckdb', storeSizeBytes: 1_900_000_000, tables: 52, loaded: true, loadedAt: '2026-04-12 04:08', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 17, detectedTables: 52 }) },
     cutover: cutoverMeta('2026-05-08 22:00 KST', 24, 30) },
   { id: 'p10', name: '신용평가',          client: TENANT, tables: 38, status: 'running', phase: 'rehearsal', src: 'Oracle 12c', tgt: 'PostgreSQL 15', updated: 'just now',
     ddl: { asis: ddlMeta('credit-ora12.sql', '2026-04-25 10:00', 38, 462), tobe: ddlMeta('credit-pg15.sql', '2026-04-26 14:20', 38, 462) },
-    connections: { asis: connMeta('ok', { latencyMs: 28, detectedTables: 38 }), tobe: connMeta('ok', { latencyMs: 14, detectedTables: 38 }) },
+    csvSource: csvMeta({ filename: 'credit_extract_2026-04-25.csv', encoding: 'UTF-8', delimiter: ',', hasHeader: true, arrivedAt: '2026-04-25 02:42', parseStatus: 'ok', recordCount: 6_184_220 }),
+    staging: stagingMeta({ store: 'data/staging/p10.duckdb', storeSizeBytes: 540_000_000, tables: 38, loaded: true, loadedAt: '2026-04-25 03:30', schemaMatch: 'ok' }),
+    connections: { tobe: connMeta('ok', { latencyMs: 14, detectedTables: 38 }) },
     cutover: cutoverMeta('2026-06-05 22:00 KST', 24, 25) },
 ];
 
@@ -1966,6 +2019,73 @@ const getPreflightChecks = (project) => {
   const conn = project?.connections || {};
   const ddl = project?.ddl || {};
 
+  /* ── CSV → staging 검증 (AS-IS 측) ──
+     이전의 JDBC AS-IS 접속 점검을 대체. 운영팀 야간 추출 → CSV 도착 → DuckDB
+     staging 적재 → ASIS DDL 과 컬럼 일치 검증의 4단계. */
+  const csv = project?.csvSource;
+  const staging = project?.staging;
+
+  /* csv-arrived: 추출 파일 도착 여부. parseStatus === 'untested' 면 fail (미도착). */
+  checks.push({
+    id: 'csv-arrived', title: 'AS-IS 추출 데이터 도착',
+    status: !csv ? 'fail' : csv.parseStatus === 'untested' ? 'fail' : 'pass',
+    detail: !csv ? '추출 파일 미설정 — 운영팀 야간 추출 파일 등록 필요'
+      : csv.parseStatus === 'untested' ? `파일 미도착 — ${csv.filename || '예정 파일'} 미수신`
+      : `${csv.filename} · 도착 ${csv.arrivedAt || '—'}`,
+    fix: { tab: 'settings', section: 'source' },
+  });
+
+  /* csv-parsed: parseStatus === 'ok' 면 pass, 그 외 fail. */
+  checks.push({
+    id: 'csv-parsed', title: 'AS-IS 추출 데이터 파싱',
+    status: csv?.parseStatus === 'ok' ? 'pass' : 'fail',
+    detail: !csv ? '추출 파일 미설정'
+      : csv.parseStatus === 'ok' ? `${(csv.recordCount || 0).toLocaleString()}행 · ${csv.encoding} · ${csv.delimiter === 'FB' ? `고정폭 ${csv.recordLength}b` : `구분자 ${csv.delimiter}`}`
+      : csv.parseStatus === 'failed' ? `파싱 실패 — ${csv.parseError || '원인 미상'}`
+      : csv.parseStatus === 'pending' ? '파일 도착 — 파싱 미실행'
+      : '파일 미도착 — 파싱 불가',
+    fix: { tab: 'settings', section: 'source' },
+  });
+
+  /* staging-loaded: staging.loaded === true 면 pass. */
+  checks.push({
+    id: 'staging-loaded', title: 'AS-IS DB 적재',
+    status: staging?.loaded === true ? 'pass' : 'fail',
+    detail: !staging ? 'AS-IS DB 미설정'
+      : staging.loaded ? `${staging.tables}개 테이블 · ${staging.store} · 적재 완료 ${staging.loadedAt}`
+      : '추출 데이터 → AS-IS DB 적재 미실행',
+    fix: { tab: 'settings', section: 'source' },
+  });
+
+  /* asis-db-ready: AS-IS DB 파일을 *현재* 읽을 수 있는 상태인지.
+     도구 내장이라도 파일 손상·디스크 풀·잠금·권한 등으로 실패 가능. */
+  checks.push({
+    id: 'asis-db-ready', title: 'AS-IS DB 접근 가능',
+    status: !staging ? 'fail'
+      : staging.dbReady === 'ok' ? 'pass'
+      : staging.dbReady === 'failed' ? 'fail'
+      : 'fail',  // pending = 아직 적재 안 됨
+    detail: !staging ? 'AS-IS DB 미설정 — 접근 불가'
+      : staging.dbReady === 'ok' ? `DB 파일 열기 OK · ${staging.tables}개 테이블 카탈로그 조회 OK`
+      : staging.dbReady === 'failed' ? (staging.dbReadyDetail || 'DB 파일 접근 실패 — 손상·잠금·권한 확인 필요')
+      : '적재 미완료 — 접근 가능 검증 보류',
+    fix: { tab: 'settings', section: 'source' },
+  });
+
+  /* schema-match: AS-IS DDL 과 AS-IS DB 적재 결과의 컬럼·길이 일치 검증. */
+  checks.push({
+    id: 'schema-match', title: 'AS-IS DDL 과 AS-IS DB 스키마 일치',
+    status: !staging ? 'fail'
+      : staging.schemaMatch === 'ok' ? 'pass'
+      : staging.schemaMatch === 'mismatch' ? 'fail'
+      : 'warn',
+    detail: !staging ? 'AS-IS DB 미설정 — 비교 불가'
+      : staging.schemaMatch === 'ok' ? 'AS-IS DDL 과 적재된 AS-IS DB 의 컬럼·길이가 일치'
+      : staging.schemaMatch === 'mismatch' ? (staging.schemaMismatchDetail || '컬럼 또는 길이 불일치')
+      : '적재 미완료 또는 비교 미수행',
+    fix: { tab: 'settings', section: 'source' },
+  });
+
   const mkConnCheck = (side, label) => {
     const c = conn[side];
     const s = c?.status;
@@ -1977,8 +2097,6 @@ const getPreflightChecks = (project) => {
       : 'Not tested yet';
     return { id: `conn-${side}`, title: `${label} 접속 확인`, status, detail, fix: { tab: 'settings', section: side === 'asis' ? 'source' : 'target' } };
   };
-  checks.push(mkConnCheck('asis', 'AS-IS'));
-  checks.push(mkConnCheck('tobe', 'TO-BE'));
 
   const mkDdlCheck = (side, label) => ({
     id: `ddl-${side}`, title: `${label} DDL import`,
@@ -1988,6 +2106,7 @@ const getPreflightChecks = (project) => {
   });
   checks.push(mkDdlCheck('asis', 'AS-IS'));
   checks.push(mkDdlCheck('tobe', 'TO-BE'));
+  checks.push(mkConnCheck('tobe', 'TO-BE'));
 
   /* Mapping coverage — only evaluable when both DDLs are present */
   const bothDdl = ddl.asis && ddl.tobe;

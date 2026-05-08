@@ -244,8 +244,52 @@ const App = () => {
           />
           {view === 'project' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>
-            {['asis', 'tobe'].map(side => {
-              const c = project.connections?.[side];
+            {/* AS-IS 뱃지 — CSV 파싱 + 도구 내장 AS-IS DB 적재/스키마 일치 상태를
+                두 점으로 합쳐 표시. 클릭 시 AS-IS 섹션으로 점프. */}
+            {(() => {
+              const csv = project.csvSource;
+              const stg = project.staging;
+              const csvDot = !csv ? 'var(--text-4)'
+                : csv.parseStatus === 'ok' ? 'var(--green)'
+                : csv.parseStatus === 'failed' ? 'var(--red)'
+                : csv.parseStatus === 'pending' ? 'var(--amber)'
+                : 'var(--text-4)';
+              const stgDot = !stg ? 'var(--text-4)'
+                : stg.schemaMatch === 'ok' && stg.loaded ? 'var(--green)'
+                : stg.schemaMatch === 'mismatch' ? 'var(--red)'
+                : 'var(--amber)';
+              const csvLabel = !csv ? '미설정'
+                : csv.parseStatus === 'ok' ? `파싱 완료 · ${(csv.recordCount || 0).toLocaleString()}행`
+                : csv.parseStatus === 'failed' ? `파싱 실패 · ${csv.parseError || ''}`
+                : csv.parseStatus === 'pending' ? '도착 — 파싱 미실행'
+                : '미도착';
+              const stgLabel = !stg ? '미설정'
+                : !stg.loaded ? '미적재'
+                : stg.schemaMatch === 'ok' ? `적재 완료 · ${stg.tables}개 테이블 · 스키마 일치`
+                : stg.schemaMatch === 'mismatch' ? `적재 완료 · 스키마 불일치`
+                : `적재 완료 · 스키마 검증 대기`;
+              const tooltip = `CSV: ${csvLabel}\nAS-IS DB: ${stgLabel}`;
+              return (
+                <button onClick={() => { setSettingsSection('source'); setTab('settings'); }}
+                  title={tooltip}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '2px 8px', background: 'var(--panel-2)',
+                    border: '1px solid var(--border)', borderRadius: 10,
+                    fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--panel)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--panel-2)'}
+                >
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: csvDot, flexShrink: 0 }}/>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: stgDot, flexShrink: 0 }}/>
+                  AS-IS
+                </button>
+              );
+            })()}
+            {(() => {
+              const c = project.connections?.tobe;
               const dotColor = !c || c.status === 'untested' ? 'var(--text-4)'
                 : c.status === 'ok' ? 'var(--green)'
                 : c.status === 'failed' ? 'var(--red)'
@@ -259,10 +303,7 @@ const App = () => {
                 c.status === 'stale' ? `Stale · last tested ${c.lastTestedAt}` :
                 'Not tested yet';
               return (
-                <button key={side} onClick={() => {
-                    setSettingsSection(side === 'asis' ? 'source' : 'target');
-                    setTab('settings');
-                  }}
+                <button onClick={() => { setSettingsSection('target'); setTab('settings'); }}
                   title={tooltip}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -275,10 +316,10 @@ const App = () => {
                   onMouseLeave={e => e.currentTarget.style.background = 'var(--panel-2)'}
                 >
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }}/>
-                  {side === 'asis' ? 'AS-IS' : 'TO-BE'}
+                  TO-BE
                 </button>
               );
-            })}
+            })()}
           </div>
           )}
         </div>
