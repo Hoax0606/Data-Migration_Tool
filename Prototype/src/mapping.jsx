@@ -1209,7 +1209,7 @@ const Inspector = ({ active, composition, onClose, asisColPool, onSaveOverride, 
       <div style={{ padding: '14px', marginTop: 'auto', borderTop: '1px solid var(--border)', display: 'flex', gap: 6 }}>
         {!editing && (
           <Btn kind={active.rule === 'unmapped' ? 'primary' : 'secondary'} size="sm" onClick={() => setEditing(true)}>
-            {active.rule === 'unmapped' ? 'Assign source' : 'Edit rule'}
+            Edit rule
           </Btn>
         )}
         {!editing && active.overridden && (
