@@ -202,8 +202,15 @@ const Ic = {
   spinner: () => <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ animation: 'mig-spin .9s linear infinite' }}><path d="M6 1a5 5 0 1 1 -4.5 2.8"/></svg>,
 };
 
+/* Brand name — "ModernizePro" inherits the parent's color, "Data" is mint
+   (var(--green)). One source of truth so the styling is identical in every
+   surface (sidebar, sign-in, sign-out, About, Solution settings, etc.). */
+const BrandName = () => (
+  <span>ModernizePro<span style={{ color: 'var(--green)' }}>Data</span></span>
+);
+
 /* Formatting helpers */
 const fmtN = (n) => n.toLocaleString('en-US');
 const fmtPct = (n) => `${n.toFixed(n < 10 ? 1 : 1)}%`;
 
-Object.assign(window, { StatusDot, StatusBadge, TypeBadge, RuleTag, Btn, Kbd, Divider, ProgressBar, Ic, fmtN, fmtPct });
+Object.assign(window, { StatusDot, StatusBadge, TypeBadge, RuleTag, Btn, Kbd, Divider, ProgressBar, Ic, BrandName, fmtN, fmtPct });

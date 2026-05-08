@@ -62,7 +62,7 @@ const Sidebar = ({
         borderBottom: '1px solid var(--border)',
       }}>
         <img src="icon/mpd.png" alt="ModernizeProData" style={{ width: 18, height: 18, display: 'block', flexShrink: 0 }}/>
-        <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.1 }}>Modernize<span style={{ color: 'var(--text-3)' }}>ProData</span></div>
+        <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.1 }}><BrandName/></div>
       </div>
 
       {/* Site switcher dropdown */}
@@ -266,7 +266,24 @@ const Sidebar = ({
                 >
                   {active && <div style={{ position: 'absolute', left: -4, top: 4, bottom: 4, width: 2, background: 'var(--navy)', borderRadius: 1 }}/>}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 1 }}>
-                    <StatusDot tone={p.status} size={7} ring={active}/>
+                    {(() => {
+                      /* Active-run indicator — 진행 중인 run 이 있을 때만 점이 켜진다.
+                         색은 그 run 의 mode 에 따라 cutover=빨강, rehearsal=주황. */
+                      const ar = window.getActiveRun?.(p.id);
+                      if (!ar) {
+                        /* 자리 차지용 투명 placeholder — 정렬 유지 */
+                        return <span style={{ width: 7, height: 7, flexShrink: 0 }}/>;
+                      }
+                      const c = ar.mode === 'cutover' ? '#F87171' : '#FB923C';
+                      return (
+                        <span title={`${ar.mode} run 진행 중 · ${ar.id}`} style={{
+                          width: 7, height: 7, borderRadius: '50%',
+                          background: c,
+                          boxShadow: `0 0 0 2px ${c}33`,
+                          flexShrink: 0,
+                        }}/>
+                      );
+                    })()}
                     <span style={{
                       fontSize: 11.5, fontWeight: active ? 600 : 500,
                       color: active ? 'var(--navy)' : 'var(--text)',
@@ -296,13 +313,18 @@ const Sidebar = ({
                     fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)',
                     display: 'flex', gap: 6, alignItems: 'center',
                   }}>
-                    {p.phase && (
-                      <span style={{
-                        padding: '0 4px', borderRadius: 2, fontSize: 9, fontWeight: 600,
-                        background: 'var(--panel-2)', color: 'var(--text-2)',
-                        border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: 0.3,
-                      }}>{(window.getPhaseLabel?.(p.phase) || p.phase)}</span>
-                    )}
+                    {p.phase && (() => {
+                      const bg = window.getPhaseBg?.(p.phase)    || 'var(--panel-2)';
+                      const fg = window.getPhaseColor?.(p.phase) || 'var(--text-2)';
+                      return (
+                        <span style={{
+                          padding: '0 4px', borderRadius: 2, fontSize: 9, fontWeight: 600,
+                          background: bg, color: fg,
+                          border: `1px solid ${fg}`, textTransform: 'uppercase', letterSpacing: 0.3,
+                          whiteSpace: 'nowrap', flexShrink: 0,
+                        }}>{(window.getPhaseLabel?.(p.phase) || p.phase)}</span>
+                      );
+                    })()}
                     <span>{p.tables} tables</span>
                     <span style={{ color: 'var(--text-4)' }}>·</span>
                     <span>{p.updated}</span>
@@ -363,7 +385,7 @@ const Sidebar = ({
               { k: 'solution', l: 'Solution settings',   icon: '⚙',  active: solutionActive },
               { kind: 'divider' },
               { k: 'help',     l: 'Help & shortcuts',    icon: '?' },
-              { k: 'about',    l: 'About ModernizeProData', icon: 'ⓘ' },
+              { k: 'about',    l: <>About <BrandName/></>, icon: 'ⓘ' },
               { kind: 'divider' },
               { k: 'signout',  l: 'Sign out',            icon: '⎋' },
             ].map((it, i) => it.kind === 'divider' ? (

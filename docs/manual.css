@@ -1,0 +1,257 @@
+﻿:root {
+  --ink:       #14171b;   /* ・ｸ・ｸ ・・・*/
+  --ink-2:     #2c333d;   /* ・ｴ・ｰ 奛作侃孖ｸ */
+  --ink-3:     #5b6573;   /* ・｡・・*/
+  --ink-4:     #9099a6;   /* ・ｼ・ｨ */
+  --line:      #d8dde4;
+  --line-soft: #ebeef2;
+  --paper:     #ffffff;
+  --paper-2:   #f7f9fb;
+  --mint:      #0c9e6a;   /* ・・ｼ﨑・・菩｡ｰ ・・*/
+  --mint-soft: #d6efe2;   /* ・・捩 ・ｼ孖ｸ */
+  --code-bg:   #1c1f23;   /* ・罷糖 ・菩侃 窶・・ｨ・ｸ奝､ ・､增ｬ */
+  --code-fg:   #e6e9ee;
+}
+
+@page {
+  size: A4;
+  margin: 24mm 20mm 22mm 20mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: 'Consolas', monospace;
+    font-size: 9pt;
+    color: var(--ink-3);
+  }
+}
+@page :first {
+  margin: 0;
+  @bottom-center { content: none; }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper);
+  margin: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* 笏笏 Cover (first page) 窶・彧ｰ ・ｰ・ｽ + ・ｼ孖ｸ ・｡・ｼ孖ｸ 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏 */
+header#title-block-header {
+  background: var(--paper);
+  color: var(--ink);
+  padding: 110mm 22mm 22mm;
+  height: 297mm;
+  position: relative;
+  page-break-after: always;
+  border-top: 12pt solid var(--mint);
+}
+header#title-block-header::before {
+  content: '';
+  position: absolute;
+  left: 22mm; top: 38mm;
+  width: 38mm; height: 4pt;
+  background: var(--mint);
+}
+header#title-block-header h1.title {
+  font-size: 32pt;
+  font-weight: 700;
+  letter-spacing: -0.5pt;
+  margin: 0 0 14pt;
+  color: var(--ink);
+  border: none;
+}
+header#title-block-header p.subtitle {
+  font-size: 12pt;
+  color: var(--mint);
+  margin: 0 0 28pt;
+  font-family: 'Consolas', monospace;
+  letter-spacing: 0.5pt;
+}
+header#title-block-header p.author,
+header#title-block-header p.date {
+  font-size: 10pt;
+  color: var(--ink-3);
+  margin: 0;
+  font-family: 'Consolas', monospace;
+}
+header#title-block-header::after {
+  content: 'ModernizeProData ﾂｷ KS Info System';
+  position: absolute;
+  left: 22mm; bottom: 22mm;
+  font-size: 8.5pt;
+  letter-spacing: 1.4pt;
+  color: var(--ink-4);
+  font-family: 'Consolas', monospace;
+  text-transform: uppercase;
+}
+
+/* 笏笏 Table of contents 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏 */
+nav#TOC {
+  page-break-after: always;
+  padding: 22mm 24mm 0;
+}
+nav#TOC::before {
+  content: 'CONTENTS';
+  display: block;
+  font-size: 9pt;
+  letter-spacing: 3pt;
+  color: var(--mint);
+  font-weight: 600;
+  margin-bottom: 8pt;
+  padding-bottom: 6pt;
+  border-bottom: 2pt solid var(--mint);
+}
+nav#TOC h1, nav#TOC h2 { display: none; }
+nav#TOC ul { list-style: none; padding-left: 0; margin: 0; }
+nav#TOC > ul > li {
+  margin: 7pt 0 5pt;
+  font-size: 11pt;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px dotted var(--line);
+  padding-bottom: 4pt;
+}
+nav#TOC ul ul { padding-left: 14pt; margin: 3pt 0 5pt; border-bottom: none; }
+nav#TOC ul ul li {
+  font-size: 9.8pt;
+  font-weight: 400;
+  color: var(--ink-2);
+  margin: 1.5pt 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+nav#TOC ul ul ul li { font-size: 9.4pt; color: var(--ink-3); }
+nav#TOC a { color: inherit; text-decoration: none; }
+
+/* 笏笏 Body padding 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏 */
+body > *:not(header#title-block-header):not(nav#TOC) {
+  padding-left: 22mm;
+  padding-right: 22mm;
+}
+
+/* 笏笏 Headings 窶・・・・奛作侃孖ｸ + ・ｼ孖ｸ ・｡・ｼ孖ｸ 笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏笏 */
+h1, h2, h3, h4 {
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+h1 {
+  font-size: 21pt;
+  margin: 30pt 0 14pt;
+  padding-top: 8pt;
+  page-break-before: always;
+}
+h1::before {
+  content: '';
+  display: block;
+  width: 30pt;
+  height: 3pt;
+  background: var(--mint);
+  margin-bottom: 12pt;
+}
+h2 {
+  font-size: 14pt;
+  margin: 22pt 0 8pt;
+  padding-bottom: 4pt;
+  border-bottom: 1px solid var(--line);
+  page-break-after: avoid;
+}
+h3 {
+  font-size: 11.5pt;
+  margin: 16pt 0 6pt;
+  color: var(--ink);
+  page-break-after: avoid;
+}
+h3::before {
+  content: '';
+  display: inline-block;
+  width: 8pt;
+  height: 2pt;
+  background: var(--mint);
+  vertical-align: middle;
+  margin-right: 6pt;
+  margin-bottom: 2pt;
+}
+h4 {
+  font-size: 10.5pt;
+  margin: 12pt 0 4pt;
+  color: var(--ink-2);
+  font-weight: 600;
+  page-break-after: avoid;
+}
+
+p { margin: 0 0 8pt; }
+ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
+li { margin-bottom: 3pt; }
+li > p { margin: 0 0 4pt; }
+strong { color: var(--ink); font-weight: 600; }
+em { color: var(--mint); font-style: italic; }
+a { color: var(--mint); text-decoration: none; border-bottom: 1px dotted var(--line); }
+
+code {
+  font-family: 'Consolas', 'Cascadia Mono', monospace;
+  font-size: 9.5pt;
+  background: var(--paper-2);
+  padding: 1pt 5pt;
+  border: 1px solid var(--line-soft);
+  border-radius: 3pt;
+  color: var(--ink-2);
+}
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 11pt 14pt;
+  border-radius: 4pt;
+  overflow-x: auto;
+  font-size: 8.8pt;
+  line-height: 1.55;
+  margin: 10pt 0;
+  page-break-inside: avoid;
+  border-left: 3pt solid var(--mint);
+}
+pre code { background: none; border: none; padding: 0; color: inherit; font-size: inherit; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10pt 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+  border-top: 1.4pt solid var(--mint);
+  border-bottom: 1.4pt solid var(--mint);
+}
+thead { background: var(--mint-soft); }
+th {
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  padding: 6pt 9pt;
+  border-bottom: 1pt solid var(--mint);
+  letter-spacing: 0.2pt;
+}
+td {
+  padding: 5pt 9pt;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line-soft);
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #fbfcfd; }
+
+blockquote {
+  border-left: 3px solid var(--mint);
+  padding: 8pt 14pt;
+  margin: 10pt 0;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  border-radius: 0 3pt 3pt 0;
+}
+hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 18pt 0;
+}

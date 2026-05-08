@@ -1,6 +1,6 @@
 /* Project Settings tab — general, source/target, schedule, notifications, danger zone */
 
-const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDelete, onDuplicate, onRename, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail }) => {
+const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDelete, onDuplicate, onRename, onDdlChange, onTestConnection, onCredentialsChange, onSimulateFail, notifEnabled = true }) => {
   /* Section can be controlled (from top-bar badge deep-link) or internal. */
   const [localSection, setLocalSection] = React.useState('general');
   const section = sectionProp ?? localSection;
@@ -60,7 +60,7 @@ const ProjectSettings = ({ project, section: sectionProp, onSectionChange, onDel
         {section === 'source'   && <PSSource   project={project} onDdlChange={onDdlChange} onTestConnection={onTestConnection} onCredentialsChange={onCredentialsChange} onSimulateFail={onSimulateFail}/>}
         {section === 'target'   && <PSTarget   project={project} onDdlChange={onDdlChange} onTestConnection={onTestConnection} onCredentialsChange={onCredentialsChange} onSimulateFail={onSimulateFail}/>}
         {section === 'schedule' && <PSSchedule project={project}/>}
-        {section === 'notify'   && <PSNotify/>}
+        {section === 'notify'   && <PSNotify notifEnabled={notifEnabled}/>}
         {section === 'danger'   && <PSDanger project={project} onDelete={onDelete} onDuplicate={onDuplicate}/>}
       </div>
     </div>
@@ -609,71 +609,90 @@ const PSSchedule = ({ project }) => {
   );
 };
 
-const PSNotify = () => {
+const PSNotify = ({ notifEnabled = true }) => {
   const events = window.NOTIFICATION_EVENTS || [];
   /* All events on by default. Real tool persists per-user prefs server-side. */
   const [subs, setSubs] = React.useState(() => {
     const o = {}; events.forEach(e => { o[e.k] = true; }); return o;
   });
-  const toggle = (k) => setSubs(s => ({ ...s, [k]: !s[k] }));
+  const toggle = (k) => notifEnabled && setSubs(s => ({ ...s, [k]: !s[k] }));
 
   return (
     <>
       <PSHead title="Notifications" desc="In-app inbox · 닫힌 네트워크에서는 유일한 기본 채널입니다."
-        actions={<Btn kind="primary" size="sm">Save changes</Btn>}/>
+        actions={<Btn kind="primary" size="sm" disabled={!notifEnabled}>Save changes</Btn>}/>
 
-      {/* Closed-env hint */}
+      {/* Master toggle off — 안내 배너 (정책 우선) */}
+      {!notifEnabled ? (
+        <div style={{
+          padding: '12px 14px', marginBottom: 14,
+          border: '1px solid var(--amber)', background: 'var(--amber-50)',
+          borderRadius: 4, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6,
+        }}>
+          <div style={{ fontWeight: 600, color: 'var(--amber)', marginBottom: 4 }}>
+            🔕 알림이 솔루션 전역에서 비활성화 상태입니다
+          </div>
+          현재 <b>Solution Settings › Notifications</b> 의 마스터 스위치가 off 입니다. 본 화면의 이벤트 구독은 일시적으로 잠겨 있으며, Solution Settings 에서 알림을 다시 켜야 적용됩니다.
+        </div>
+      ) : (
+        <div style={{
+          padding: '10px 14px', marginBottom: 14,
+          border: '1px solid var(--border)', borderRadius: 4,
+          background: 'var(--panel-2)',
+          fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>📬 In-app notification inbox</div>
+          외부 Slack / Email / Webhook 은 폐쇄망에서는 쓸 수 없으므로, 모든 알림은 상단의
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, margin: '0 4px',
+            padding: '1px 6px', border: '1px solid var(--border-strong)', borderRadius: 3,
+            fontFamily: 'var(--mono)', fontSize: 10.5 }}>🔔 Bell</span>
+          아이콘을 통해 수신됩니다.
+        </div>
+      )}
+
       <div style={{
-        padding: '10px 14px', marginBottom: 14,
-        border: '1px solid var(--border)', borderRadius: 4,
-        background: 'var(--panel-2)',
-        fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.6,
+        opacity: notifEnabled ? 1 : 0.45,
+        pointerEvents: notifEnabled ? 'auto' : 'none',
+        transition: 'opacity .15s',
       }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>📬 In-app notification inbox</div>
-        외부 Slack / Email / Webhook 은 폐쇄망에서는 쓸 수 없으므로, 모든 알림은 상단의
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, margin: '0 4px',
-          padding: '1px 6px', border: '1px solid var(--border-strong)', borderRadius: 3,
-          fontFamily: 'var(--mono)', fontSize: 10.5 }}>🔔 Bell</span>
-        아이콘을 통해 수신됩니다. 외부 채널은 V1 에서 환경별로 선택 가능하도록 사이트 설정에 추가 예정.
-      </div>
-
-      <PSCard title="이벤트 구독" desc="알림으로 받을 이벤트를 선택합니다.">
-        {events.map((e, i) => (
-          <div key={e.k} style={{
-            display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14,
-            padding: '8px 0',
-            borderBottom: i < events.length - 1 ? '1px dashed var(--border)' : 'none',
-          }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 500 }}>{e.l}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>{e.desc}</div>
+        <PSCard title="이벤트 구독" desc="알림으로 받을 이벤트를 선택합니다.">
+          {events.map((e, i) => (
+            <div key={e.k} style={{
+              display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14,
+              padding: '8px 0',
+              borderBottom: i < events.length - 1 ? '1px dashed var(--border)' : 'none',
+            }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}>{e.l}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>{e.desc}</div>
+              </div>
+              <PSToggle on={notifEnabled && subs[e.k]} onChange={() => toggle(e.k)} label=""/>
             </div>
-            <PSToggle on={subs[e.k]} onChange={() => toggle(e.k)} label=""/>
-          </div>
-        ))}
-      </PSCard>
+          ))}
+        </PSCard>
 
-      <PSCard title="수신자 옵션" desc="이 프로젝트에 관한 알림을 받는 범위.">
-        <PSRow label="Scope" hint="본인이 관여한 활동만 받을지, 프로젝트 전체 이벤트를 받을지">
-          <div style={{ display: 'flex', gap: 5 }}>
-            {['mine-only', 'all-project'].map(k => {
-              const active = k === 'all-project';
-              return (
-                <button key={k} style={{
-                  padding: '3px 12px', fontSize: 11, fontFamily: 'var(--mono)',
-                  border: `1px solid ${active ? 'var(--navy)' : 'var(--border)'}`,
-                  background: active ? 'var(--navy)' : 'var(--panel)',
-                  color: active ? '#fff' : 'var(--text-2)',
-                  borderRadius: 3, cursor: 'pointer',
-                }}>{k === 'mine-only' ? 'My activity only' : 'All project events'}</button>
-              );
-            })}
-          </div>
-        </PSRow>
-        <PSRow label="Retention" hint="알림이 inbox 에 유지되는 기간">
-          <PSInput value="90 days" mono width={160}/>
-        </PSRow>
-      </PSCard>
+        <PSCard title="수신자 옵션" desc="이 프로젝트에 관한 알림을 받는 범위.">
+          <PSRow label="Scope" hint="본인이 관여한 활동만 받을지, 프로젝트 전체 이벤트를 받을지">
+            <div style={{ display: 'flex', gap: 5 }}>
+              {['mine-only', 'all-project'].map(k => {
+                const active = k === 'all-project';
+                return (
+                  <button key={k} style={{
+                    padding: '3px 12px', fontSize: 11, fontFamily: 'var(--mono)',
+                    border: `1px solid ${active ? 'var(--navy)' : 'var(--border)'}`,
+                    background: active ? 'var(--navy)' : 'var(--panel)',
+                    color: active ? '#fff' : 'var(--text-2)',
+                    borderRadius: 3, cursor: 'pointer',
+                  }}>{k === 'mine-only' ? 'My activity only' : 'All project events'}</button>
+                );
+              })}
+            </div>
+          </PSRow>
+          <PSRow label="Retention" hint="알림이 inbox 에 유지되는 기간">
+            <PSInput value="90 days" mono width={160}/>
+          </PSRow>
+        </PSCard>
+      </div>
     </>
   );
 };

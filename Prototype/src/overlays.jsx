@@ -57,7 +57,7 @@ const SignOutScreen = ({ onCancel, onConfirm }) => {
         <img src="icon/mpd.png" alt="ModernizeProData" style={{
           width: 48, height: 48, margin: '0 auto 12px', display: 'block',
         }}/>
-        <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, marginBottom: 5 }}>Sign out of ModernizeProData?</div>
+        <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, marginBottom: 5 }}>Sign out of <BrandName/>?</div>
         <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--text-2)', lineHeight: 1.55, fontFamily: 'var(--mono)' }}>
           Running migrations will continue on the server.<br/>
           You'll need to sign in again to view their progress.
@@ -118,7 +118,7 @@ const SignedOutScreen = ({ onSignIn }) => {
               width: 56, height: 56, margin: '0 auto 10px', display: 'block',
             }}/>
             <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.1 }}>
-              ModernizeProData
+              <BrandName/>
               <span style={{ fontSize: 10.5, fontWeight: 400, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginLeft: 6 }}>v4.12.0</span>
             </div>
             <div style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 3 }}>
@@ -297,42 +297,57 @@ const Help = ({ onClose }) => {
     {
       title: 'Navigation',
       items: [
-        ['G then D', 'Go to Dashboard'],
-        ['G then M', 'Go to Mapping'],
-        ['G then E', 'Go to Execution'],
-        ['G then L', 'Go to Logs'],
-        ['G then A', 'Go to Artifacts'],
-        ['⌘ / Ctrl + K', 'Quick switcher (projects & tables)'],
+        ['Alt + 1', 'Go to Dashboard'],
+        ['Alt + 2', 'Go to Mapping'],
+        ['Alt + 3', 'Go to Execution'],
+        ['Alt + 4', 'Go to Logs'],
+        ['Alt + 5', 'Go to Artifacts'],
       ],
     },
     {
-      title: 'Actions',
+      title: 'Run control',
       items: [
-        ['R', 'Run all'],
-        ['⌘ / Ctrl + .', 'Abort run'],
-        ['N', 'New project'],
-        ['/', 'Focus filter input'],
-        ['?', 'Open this dialog'],
+        ['F5', 'Run all'],
+        ['Shift + F5', 'Abort run'],
+        ['F6', 'Validate mappings'],
+        ['F7', 'Re-run failed only'],
+        ['F8', 'Step to next stage'],
+        ['Ctrl + S', 'Save project'],
+      ],
+    },
+    {
+      title: 'Project & windows',
+      items: [
+        ['Ctrl + B', 'Toggle sidebar'],
+        ['Ctrl + N', 'New project'],
+        ['Ctrl + O', 'Open project'],
+        ['Ctrl + W', 'Close current tab'],
+        ['Ctrl + ,', 'Open Settings'],
+        ['F1', 'Open this Help dialog'],
+        ['Esc', 'Close dialog / cancel inline edit'],
       ],
     },
     {
       title: 'Tables & rows',
       items: [
-        ['↑ / ↓', 'Move selection'],
-        ['Space', 'Toggle selection'],
-        ['⏎', 'Open selected table'],
-        ['⌘ / Ctrl + A', 'Select all filtered'],
+        ['Ctrl + F', 'Focus filter input'],
+        ['↑ / ↓', 'Move row selection'],
+        ['Space', 'Toggle row selection'],
+        ['Enter', 'Open selected table'],
+        ['Ctrl + A', 'Select all filtered rows'],
+        ['Ctrl + D', 'Deselect all'],
+        ['Ctrl + Enter', 'Apply mapping change'],
       ],
     },
   ];
   return (
     <OverlayShell onClose={onClose} wide
       title="Help & shortcuts"
-      desc="Keyboard bindings and where to find things.">
+      desc="Keyboard bindings (Windows / Linux) and where to find things. macOS users: substitute Ctrl with ⌘.">
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         {shortcutGroups.map(g => (
-          <div key={g.title} style={{ gridColumn: g.title === 'Tables & rows' ? 'span 2' : 'span 1' }}>
+          <div key={g.title}>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 }}>{g.title}</div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 3, background: '#fff', overflow: 'hidden' }}>
               {g.items.map(([k, d], i) => (
@@ -348,6 +363,7 @@ const Help = ({ onClose }) => {
                     padding: '1px 7px', background: 'var(--panel-2)',
                     border: '1px solid var(--border-strong)',
                     borderRadius: 3, color: 'var(--text-2)',
+                    whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 8,
                   }}>{k}</kbd>
                 </div>
               ))}
@@ -382,28 +398,30 @@ const About = ({ onClose }) => {
   );
   return (
     <OverlayShell onClose={onClose}
-      title="About ModernizeProData"
+      title={<>About <BrandName/></>}
       desc="Build info, licensing, and credits.">
 
       <div style={{ textAlign: 'center', padding: '8px 0 14px' }}>
         <img src="icon/mpd.png" alt="ModernizeProData" style={{
           width: 56, height: 56, margin: '0 auto 8px', display: 'block',
         }}/>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>ModernizeProData</div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}><BrandName/></div>
         <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 2 }}>
           v4.12.0 · build 2026.04.18-a9f3c1
         </div>
       </div>
 
       <div>
-        <Row l="Product"  v="ModernizeProData" mono={false}/>
+        <Row l="Product"  v={<BrandName/>} mono={false}/>
         <Row l="Edition"  v="Enterprise · on-premise"/>
         <Row l="License"  v="KDB-2025-A1 · valid until 2027-06-30"/>
         <Row l="Vendor"   v="KS Info System Co., Ltd." mono={false}/>
         <Row l="Support"  v="support@ksinfo.co.kr"/>
         <Row l="Phone"    v="+82 2 123 4567"/>
         <Row l="Node"     v="mig-prod-01 · 127.0.0.1"/>
-        <Row l="Runtime"  v="Java 17.0.9 · PostgreSQL 15.4"/>
+        <Row l="Backend"  v="Spring Boot 3.2 · Spring Batch 5.1 · MyBatis 3.5"/>
+        <Row l="Runtime"  v="Java 17.0.9 LTS · H2 2.2 (meta) · Tomcat 10.1"/>
+        <Row l="Frontend" v="React 18 · TypeScript 5 · Vite 5 · Tailwind 3"/>
       </div>
 
       <div style={{

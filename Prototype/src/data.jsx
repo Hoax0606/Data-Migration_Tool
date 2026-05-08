@@ -26,55 +26,67 @@ const connMeta = (status, opts = {}) => ({
    planning → analysis → rehearsal → sign-off → cutover → hypercare → done
    The legacy `status` field (running/waiting/done) is kept for backwards
    compat (dashboard stats etc.) but phase is the new source of truth. */
+/* Phase color tokens — 사용자 합의된 톤. 배지 텍스트/테두리(color) + 옅은 배경(bg).
+   이 배열이 단일 진실이며 app.jsx · sidebar.jsx 등 모든 phase 뱃지가 이걸 참조한다. */
 const PHASES = [
-  { k: 'planning',  l: 'Planning',   desc: '킥오프 · 담당자 배정 · 계정 확보' },
-  { k: 'analysis',  l: 'Analysis',   desc: 'DDL import · 매핑 설계' },
-  { k: 'rehearsal', l: 'Rehearsal',  desc: '시험이행 반복 · 이슈 수렴' },
-  { k: 'sign-off',  l: 'Sign-off',   desc: '최종 매핑 승인 · 컷오버 준비' },
-  { k: 'cutover',   l: 'Cutover',    desc: 'D-day 실제 이행' },
-  { k: 'hypercare', l: 'Hypercare',  desc: '컷오버 후 안정화 · rollback 감시' },
-  { k: 'done',      l: 'Done',       desc: '프로젝트 종료' },
+  { k: 'planning',  l: 'Planning',   color: '#A78BFA', bg: '#EDE9FE', desc: '아이디어·구상 단계, 차분한 시작' },
+  { k: 'analysis',  l: 'Analysis',   color: '#38BDF8', bg: '#E0F2FE', desc: '데이터 분석, 논리적·기술적' },
+  { k: 'rehearsal', l: 'Rehearsal',  color: '#FB923C', bg: '#FFEDD5', desc: '반복 훈련, 에너지·진행감' },
+  { k: 'sign-off',  l: 'Sign-off',   color: '#FACC15', bg: '#FEF9C3', desc: '대기 중, 주의·보류 상태' },
+  { k: 'cutover',   l: 'Cutover',    color: '#F87171', bg: '#FEE2E2', desc: '고긴장 구간, 즉각 인지 필요' },
+  { k: 'hypercare', l: 'Hypercare',  color: '#4ADE80', bg: '#DCFCE7', desc: '안정화 중, 회복·모니터링' },
+  { k: 'done',      l: 'Done',       color: '#94A3B8', bg: '#F1F5F9', desc: '종료·아카이브, 조용히 마무리' },
 ];
 
 const cutoverMeta = (dday, freezeHours, rollbackSla) => ({ dday, freezeHours, rollbackSla });
 
 const PROJECTS = [
-  { id: 'p1', name: 'Core Ledger',          client: TENANT, tables: 142, status: 'running', phase: 'rehearsal', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
+  { id: 'p1', name: '계정원장',           client: TENANT, tables: 142, status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 15',  updated: '2 min ago',
     ddl: { asis: ddlMeta('core-legacy.ddl',      '2026-04-18 14:22', 142, 1820), tobe: ddlMeta('core-target.sql',     '2026-04-19 09:05', 138, 1740) },
     connections: { asis: connMeta('ok', { latencyMs: 42, detectedTables: 142 }), tobe: connMeta('ok', { latencyMs: 18, detectedTables: 138 }) },
-    cutover: cutoverMeta('2026-05-03 22:00 KST', 24, 15) },
-  { id: 'p2', name: 'Deposit Accounts',     client: TENANT, tables: 87,  status: 'running', phase: 'rehearsal', src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
+    cutover: cutoverMeta('2026-05-15 22:00 KST', 24, 15) },
+  { id: 'p2', name: '수신원장',           client: TENANT, tables: 87,  status: 'waiting', phase: 'sign-off',  src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: '8 min ago',
     ddl: { asis: ddlMeta('deposit-ora11.sql',    '2026-04-10 11:30',  87,  942), tobe: ddlMeta('deposit-pg15.sql',    '2026-04-10 17:18',  85,  880) },
     connections: { asis: connMeta('ok', { latencyMs: 31, detectedTables: 87 }), tobe: connMeta('ok', { latencyMs: 22, detectedTables: 85 }) },
     cutover: cutoverMeta('2026-05-17 22:00 KST', 24, 20) },
-  { id: 'p3', name: 'FX Treasury',          client: TENANT, tables: 34,  status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
+  { id: 'p3', name: '외환',               client: TENANT, tables: 34,  status: 'waiting', phase: 'analysis',  src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: '1 hr ago',
     ddl: { asis: ddlMeta('fx-mainframe.ddl',     '2026-04-20 10:11',  34,  412), tobe: null },
     connections: { asis: connMeta('stale', { latencyMs: 78, detectedTables: 34 }), tobe: connMeta('untested') },
     cutover: cutoverMeta('2026-06-14 20:00 KST', 12, 30) },
-  { id: 'p4', name: 'Loan Origination',     client: TENANT, tables: 61,  status: 'waiting', phase: 'analysis',  src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
+  { id: 'p4', name: '여신',               client: TENANT, tables: 61,  status: 'waiting', phase: 'analysis',  src: 'Oracle 12c',         tgt: 'PostgreSQL 15',  updated: '3 hr ago',
     ddl: { asis: null,                                                           tobe: ddlMeta('loan-pg-target.sql',  '2026-04-21 16:02',  58,  726) },
     connections: { asis: connMeta('untested'), tobe: connMeta('ok', { latencyMs: 15, detectedTables: 58 }) },
     cutover: cutoverMeta('2026-06-28 22:00 KST', 24, 30) },
-  { id: 'p5', name: 'Card Authorization',   client: TENANT, tables: 28,  status: 'done',    phase: 'hypercare', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
+  { id: 'p5', name: '카드승인',           client: TENANT, tables: 28,  status: 'done',    phase: 'hypercare', src: 'Mainframe (EBCDIC)', tgt: 'PostgreSQL 14',  updated: 'Mar 14',
     ddl: { asis: ddlMeta('card-mf.ddl',          '2026-02-28 09:00',  28,  312), tobe: ddlMeta('card-pg14.sql',       '2026-03-01 14:40',  28,  310) },
     connections: { asis: connMeta('ok', { latencyMs: 38, detectedTables: 28 }), tobe: connMeta('ok', { latencyMs: 19, detectedTables: 28 }) },
     cutover: cutoverMeta('2026-03-14 22:00 KST', 24, 15) },
-  { id: 'p6', name: 'GL Consolidation',     client: TENANT, tables: 113, status: 'done',    phase: 'done',      src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
+  { id: 'p6', name: '총계정원장',         client: TENANT, tables: 113, status: 'done',    phase: 'done',      src: 'Oracle 11g',         tgt: 'PostgreSQL 15',  updated: 'Feb 28',
     ddl: { asis: ddlMeta('gl-ora.sql',           '2026-02-08 10:20', 113, 1240), tobe: ddlMeta('gl-pg.sql',           '2026-02-08 15:55', 110, 1180) },
     connections: { asis: connMeta('ok', { latencyMs: 27, detectedTables: 113 }), tobe: connMeta('ok', { latencyMs: 20, detectedTables: 110 }) },
     cutover: cutoverMeta('2026-02-28 20:00 KST', 18, 20) },
-  { id: 'p7', name: 'Trade Finance',        client: TENANT, tables: 19,  status: 'done',    phase: 'done',      src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
+  { id: 'p7', name: '무역금융',           client: TENANT, tables: 19,  status: 'done',    phase: 'done',      src: 'Mainframe (EBCDIC)', tgt: 'Linux / UTF-8',  updated: 'Feb 02',
     ddl: { asis: ddlMeta('trade-mf.ddl',         '2026-01-24 13:15',  19,  208), tobe: ddlMeta('trade-flat.yaml',     '2026-01-24 18:40',  19,  208) },
     connections: { asis: connMeta('ok', { latencyMs: 55, detectedTables: 19 }), tobe: connMeta('ok', { latencyMs: 24, detectedTables: 19 }) },
     cutover: cutoverMeta('2026-02-02 22:00 KST', 12, 20) },
-  { id: 'p8', name: 'Remittance Hub',        client: TENANT, tables: 0,   status: 'waiting', phase: 'planning',  src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
+  { id: 'p8', name: '송금허브',           client: TENANT, tables: 0,   status: 'waiting', phase: 'planning',  src: 'Oracle 19c',         tgt: 'PostgreSQL 16',  updated: 'just now',  isNew: true,
     ddl: { asis: null, tobe: null },
     connections: { asis: connMeta('untested'), tobe: connMeta('untested') },
     cutover: cutoverMeta('TBD', 24, 30) },
+  { id: 'p9', name: '인터넷뱅킹',         client: TENANT, tables: 52,  status: 'running', phase: 'cutover',   src: 'WebSphere · DB2',    tgt: 'Spring Boot · PostgreSQL 15', updated: 'just now',
+    ddl: { asis: ddlMeta('ib-db2.sql',            '2026-04-12 09:30',  52,  712), tobe: ddlMeta('ib-pg15.sql',         '2026-04-12 14:15',  52,  712) },
+    connections: { asis: connMeta('ok', { latencyMs: 25, detectedTables: 52 }), tobe: connMeta('ok', { latencyMs: 17, detectedTables: 52 }) },
+    cutover: cutoverMeta('2026-05-08 22:00 KST', 24, 30) },
+  { id: 'p10', name: '신용평가',          client: TENANT, tables: 38, status: 'running', phase: 'rehearsal', src: 'Oracle 12c', tgt: 'PostgreSQL 15', updated: 'just now',
+    ddl: { asis: ddlMeta('credit-ora12.sql', '2026-04-25 10:00', 38, 462), tobe: ddlMeta('credit-pg15.sql', '2026-04-26 14:20', 38, 462) },
+    connections: { asis: connMeta('ok', { latencyMs: 28, detectedTables: 38 }), tobe: connMeta('ok', { latencyMs: 14, detectedTables: 38 }) },
+    cutover: cutoverMeta('2026-06-05 22:00 KST', 24, 25) },
 ];
 
-/* Dashboard tables */
-const TABLES = [
+/* Dashboard tables — per-project run-progress mock used by ExportTab/Artifacts.
+   Keep p1 array as the original demo data; other projects mirror their domain
+   tables and SCHEMA_DIFF coverage. */
+const TABLES_P1 = [
   { name: 'ACCT_MASTER',        rows: 18_442_331, done: 18_442_331, pct: 100, status: 'ok',      rule: 42, issues: 0,  updated: '09:41:02', schema: 'PROD_CORE' },
   { name: 'TXN_JOURNAL_2023',   rows: 284_003_117, done: 201_554_440, pct: 70.9, status: 'running', rule: 87, issues: 2,  updated: '09:41:08', schema: 'PROD_CORE' },
   { name: 'TXN_JOURNAL_2024',   rows: 312_889_001, done: 218_995_337, pct: 70.0, status: 'running', rule: 87, issues: 0,  updated: '09:41:08', schema: 'PROD_CORE' },
@@ -94,6 +106,68 @@ const TABLES = [
   { name: 'BRANCH_MASTER',      rows: 1_814,      done: 1_814,      pct: 100, status: 'ok',      rule: 8,  issues: 0,  updated: 'Mar 30',  schema: 'PROD_ORG' },
   { name: 'EMPLOYEE',           rows: 22_104,     done: 22_104,     pct: 100, status: 'ok',      rule: 12, issues: 0,  updated: 'Mar 30',  schema: 'PROD_ORG' },
 ];
+
+/* p2 - 수신원장 sign-off — all tables migrated successfully */
+const TABLES_P2 = [
+  { name: 'DEPOSIT_ACCOUNT',     rows: 8_412_330,   done: 8_412_330,   pct: 100, status: 'ok', rule: 11, issues: 0, updated: 'yesterday', schema: 'PROD_DEPOSIT' },
+  { name: 'DEPOSIT_TRANSACTION', rows: 142_881_004, done: 142_881_004, pct: 100, status: 'ok', rule: 7,  issues: 0, updated: 'yesterday', schema: 'PROD_DEPOSIT' },
+  { name: 'INTEREST_PAYMENT',    rows: 18_004_551,  done: 18_004_551,  pct: 100, status: 'ok', rule: 6,  issues: 0, updated: 'yesterday', schema: 'PROD_DEPOSIT' },
+];
+
+/* p3 - 외환 analysis — no run yet */
+const TABLES_P3 = [];
+
+/* p4 - 여신 analysis — no run yet */
+const TABLES_P4 = [];
+
+/* p5 - 카드승인 hypercare — completed, all OK */
+const TABLES_P5 = [
+  { name: 'CARD_MASTER',   rows: 3_002_114,   done: 3_002_114,   pct: 100, status: 'ok', rule: 10, issues: 0, updated: 'Mar 14', schema: 'PROD_CARD' },
+  { name: 'CARD_AUTH_LOG', rows: 812_004_552, done: 812_004_552, pct: 100, status: 'ok', rule: 8,  issues: 0, updated: 'Mar 14', schema: 'PROD_CARD' },
+  { name: 'MERCHANT',      rows: 124_882,     done: 124_882,     pct: 100, status: 'ok', rule: 6,  issues: 0, updated: 'Mar 14', schema: 'PROD_CARD' },
+];
+
+/* p6 - 총계정원장 done — completed long ago */
+const TABLES_P6 = [
+  { name: 'GL_ACCOUNT', rows: 18_442,     done: 18_442,     pct: 100, status: 'ok', rule: 6, issues: 0, updated: 'Feb 28', schema: 'PROD_GL' },
+  { name: 'GL_JOURNAL', rows: 98_221_412, done: 98_221_412, pct: 100, status: 'ok', rule: 7, issues: 0, updated: 'Feb 28', schema: 'PROD_GL' },
+  { name: 'GL_BALANCE', rows: 2_881_009,  done: 2_881_009,  pct: 100, status: 'ok', rule: 5, issues: 0, updated: 'Feb 28', schema: 'PROD_GL' },
+];
+
+/* p7 - 무역금융 done */
+const TABLES_P7 = [
+  { name: 'LC_MASTER',   rows: 88_412,  done: 88_412,  pct: 100, status: 'ok', rule: 9, issues: 0, updated: 'Feb 02', schema: 'PROD_TRADE' },
+  { name: 'EXPORT_BILL', rows: 142_551, done: 142_551, pct: 100, status: 'ok', rule: 7, issues: 0, updated: 'Feb 02', schema: 'PROD_TRADE' },
+];
+
+/* p8 - 송금허브 planning — empty */
+const TABLES_P8 = [];
+
+/* p9 - 인터넷뱅킹 cutover in progress — mix of ok / running / queued */
+const TABLES_P9 = [
+  { name: 'IB_USER',     rows: 4_212_881,     done: 4_212_881,     pct: 100,  status: 'ok',      rule: 8, issues: 0, updated: '22:18:04', schema: 'PROD_IB' },
+  { name: 'IB_SESSION',  rows: 88_412_551,    done: 24_118_204,    pct: 27.3, status: 'running', rule: 7, issues: 0, updated: '22:42:31', schema: 'PROD_IB' },
+  { name: 'IB_TRANSFER', rows: 412_882_104,   done: 0,             pct: 0,    status: 'queued',  rule: 8, issues: 0, updated: '—',        schema: 'PROD_IB' },
+  { name: 'IB_AUDIT',    rows: 1_204_882_551, done: 0,             pct: 0,    status: 'queued',  rule: 7, issues: 0, updated: '—',        schema: 'PROD_IB' },
+];
+
+/* p10 - 신용평가 rehearsal in progress — 2 ok / 1 running / 1 queued */
+const TABLES_P10 = [
+  { name: 'CREDIT_APPLICATION', rows: 2_412_881,  done: 2_412_881,  pct: 100,  status: 'ok',      rule: 14, issues: 0, updated: '10:24:18', schema: 'PROD_CREDIT' },
+  { name: 'CREDIT_SCORE',       rows: 18_004_551, done: 18_004_551, pct: 100,  status: 'ok',      rule: 9,  issues: 0, updated: '10:25:42', schema: 'PROD_CREDIT' },
+  { name: 'CREDIT_HISTORY',     rows: 88_412_551, done: 31_482_004, pct: 35.6, status: 'running', rule: 11, issues: 0, updated: '10:29:14', schema: 'PROD_CREDIT' },
+  { name: 'CREDIT_DECISION',    rows: 1_842_004,  done: 0,          pct: 0,    status: 'queued',  rule: 8,  issues: 0, updated: '—',        schema: 'PROD_CREDIT' },
+];
+
+const TABLES_BY_PROJECT = {
+  p1: TABLES_P1, p2: TABLES_P2, p3: TABLES_P3, p4: TABLES_P4, p5: TABLES_P5,
+  p6: TABLES_P6, p7: TABLES_P7, p8: TABLES_P8, p9: TABLES_P9, p10: TABLES_P10,
+};
+const getTablesByProject = (projectId) => TABLES_BY_PROJECT[projectId] || [];
+
+/* Active TABLES — re-bound by setActiveDataProject. Legacy global readers
+   (app.jsx tab-count, ExportTab/Artifacts) see the active project's data. */
+let TABLES = TABLES_P1;
 
 /* Mapping rows (source → target) */
 const MAPPING = [
@@ -135,8 +209,8 @@ const STAGES = [
   { id: 'verify',   name: 'Verify',             sub: 'row count · checksum',     pct: 0,   tone: 'idle',    rate: '—',        eta: 'queued', color: '#8892a0' },
 ];
 
-/* Log lines */
-const LOG_LINES = [
+/* Log lines per project */
+const LOG_LINES_P1 = [
   ['09:41:08.221','INFO', 'loader.copy',  'LOAD  TXN_JOURNAL_2024  rows=50000  elapsed=312ms'],
   ['09:41:08.118','INFO', 'loader.copy',  'LOAD  TXN_JOURNAL_2023  rows=50000  elapsed=298ms'],
   ['09:41:07.994','OK',   'verify.chk',   'CHECKSUM ok  ACCT_MASTER  sha256=8a2c..e109  rows=18442331'],
@@ -175,12 +249,108 @@ const LOG_LINES = [
   ['09:41:01.118','INFO', 'scheduler',    'worker pool: 12 active / 16 total · queue depth=2'],
 ];
 
+/* p2 - 수신원장 sign-off — last rehearsal log, all OK */
+const LOG_LINES_P2 = [
+  ['02:48:11.221','OK',   'verify.chk',   'CHECKSUM ok  DEPOSIT_TRANSACTION  rows=142881004'],
+  ['02:48:10.118','INFO', 'loader.copy',  'LOAD  INTEREST_PAYMENT  rows=50000  elapsed=204ms'],
+  ['02:48:09.994','OK',   'verify.chk',   'CHECKSUM ok  DEPOSIT_ACCOUNT  rows=8412330'],
+  ['02:48:08.512','INFO', 'transform',    'rule.apply  branch_code_pad  in=50000  out=50000'],
+  ['02:48:07.331','INFO', 'loader.copy',  'LOAD  DEPOSIT_TRANSACTION  rows=50000  elapsed=288ms'],
+  ['02:48:06.118','INFO', 'extract',      'fetch  DEPOSIT.DEPOSIT_TXN  offset=140000000  chunk=50000'],
+  ['02:48:04.994','INFO', 'transform',    'rule.apply  status_norm  in=50000  out=50000'],
+  ['02:48:03.881','OK',   'verify.chk',   'CHECKSUM ok  INTEREST_PAYMENT  rows=18004551'],
+  ['02:48:02.714','INFO', 'scheduler',    'worker pool: 8 active / 12 total · queue depth=0'],
+  ['02:48:01.118','INFO', 'scheduler',    'rehearsal complete · awaiting cutover sign-off'],
+];
+
+/* p3 - 외환 analysis — no run yet */
+const LOG_LINES_P3 = [];
+
+/* p4 - 여신 analysis — no run yet */
+const LOG_LINES_P4 = [];
+
+/* p5 - 카드승인 hypercare — final cutover log */
+const LOG_LINES_P5 = [
+  ['02:11:44.221','OK',   'verify.chk',   'CHECKSUM ok  CARD_AUTH_LOG  rows=812004552'],
+  ['02:11:42.118','OK',   'verify.chk',   'CHECKSUM ok  CARD_MASTER  rows=3002114'],
+  ['02:11:40.994','OK',   'verify.chk',   'CHECKSUM ok  MERCHANT  rows=124882'],
+  ['02:11:38.118','INFO', 'loader.copy',  'LOAD  CARD_AUTH_LOG  rows=50000  elapsed=412ms'],
+  ['02:11:36.512','INFO', 'transform',    'rule.apply  ebcdic_kana_iconv  in=50000  out=50000'],
+  ['02:11:34.331','INFO', 'unpack',       'COMP-3 decoder  throughput=488MB/s  rows=1.1M/s'],
+  ['02:11:32.118','INFO', 'extract',      'read  /vol/mf/AUTH_LOG.dat  offset=0x4F12A000  chunk=256MB'],
+  ['02:11:30.994','INFO', 'scheduler',    'cutover phase: load · 22/28 tables complete'],
+];
+
+/* p6 - 총계정원장 done */
+const LOG_LINES_P6 = [
+  ['18:42:11.221','OK',   'verify.chk',   'CHECKSUM ok  GL_JOURNAL  rows=98221412'],
+  ['18:42:10.118','OK',   'verify.chk',   'CHECKSUM ok  GL_BALANCE  rows=2881009'],
+  ['18:42:09.994','OK',   'verify.chk',   'CHECKSUM ok  GL_ACCOUNT  rows=18442'],
+  ['18:42:08.512','INFO', 'loader.copy',  'LOAD  GL_JOURNAL  rows=50000  elapsed=288ms'],
+  ['18:42:07.331','INFO', 'transform',    'rule.apply  acct_cd_norm  in=50000  out=50000'],
+  ['18:42:06.118','INFO', 'scheduler',    'cutover complete · 113 tables · all OK'],
+];
+
+/* p7 - 무역금융 done */
+const LOG_LINES_P7 = [
+  ['16:32:11.221','OK',   'verify.chk',   'CHECKSUM ok  EXPORT_BILL  rows=142551'],
+  ['16:32:10.118','OK',   'verify.chk',   'CHECKSUM ok  LC_MASTER  rows=88412'],
+  ['16:32:09.994','INFO', 'loader.copy',  'LOAD  EXPORT_BILL  rows=50000  elapsed=204ms'],
+  ['16:32:08.512','INFO', 'encode',       'iconv  ebcdic-kana → utf-8  buffer=64MB  throughput=412MB/s'],
+  ['16:32:07.331','INFO', 'transform',    'rule.apply  ccy_cd_norm  in=50000  out=50000'],
+  ['16:32:06.118','INFO', 'scheduler',    'cutover complete · 19 tables · all OK'],
+];
+
+/* p8 - 송금허브 planning — no logs yet */
+const LOG_LINES_P8 = [];
+
+/* p9 - 인터넷뱅킹 cutover in progress — live tail */
+const LOG_LINES_P9 = [
+  ['22:42:31.221','INFO', 'loader.copy',  'LOAD  IB_SESSION  rows=50000  elapsed=298ms'],
+  ['22:42:30.998','INFO', 'transform',    'rule.apply  ipaddr_to_inet  in=50000  out=50000'],
+  ['22:42:29.881','INFO', 'extract',      'fetch  IB.IB_SESSION  offset=24000000  chunk=50000'],
+  ['22:42:28.512','INFO', 'loader.stage', 'stage.flush  IB_SESSION  pending=0  committed=24118204'],
+  ['22:42:27.331','OK',   'verify.chk',   'CHECKSUM ok  IB_USER  rows=4212881'],
+  ['22:42:26.118','INFO', 'transform',    'rule.apply  ts_to_tstz_seoul  in=50000  out=50000'],
+  ['22:42:24.994','INFO', 'loader.copy',  'LOAD  IB_USER  rows=50000  elapsed=204ms'],
+  ['22:42:22.881','INFO', 'scheduler',    'cutover phase: migrate · 1/4 tables complete · queue=2'],
+  ['22:42:21.118','INFO', 'extract',      'fetch  IB.IB_USER  offset=4200000  chunk=12881'],
+  ['22:18:04.221','INFO', 'scheduler',    'cutover started · 4 tables · estimated 4h 12m'],
+];
+
+/* p10 - 신용평가 rehearsal in progress — live tail */
+const LOG_LINES_P10 = [
+  ['10:29:14.881','INFO', 'loader.copy',  'LOAD  CREDIT_HISTORY  rows=50000  elapsed=312ms'],
+  ['10:29:13.512','INFO', 'transform',    'rule.apply  score_band_normalize  in=50000  out=50000'],
+  ['10:29:12.118','INFO', 'extract',      'fetch  CREDIT.CREDIT_HISTORY  offset=31400000  chunk=50000'],
+  ['10:28:58.331','INFO', 'loader.stage', 'stage.flush  CREDIT_HISTORY  pending=0  committed=31482004'],
+  ['10:25:42.114','OK',   'verify.chk',   'CHECKSUM ok  CREDIT_SCORE  rows=18004551'],
+  ['10:25:18.998','INFO', 'transform',    'rule.apply  score_decimal_round  in=50000  out=50000'],
+  ['10:24:18.881','OK',   'verify.chk',   'CHECKSUM ok  CREDIT_APPLICATION  rows=2412881'],
+  ['10:23:44.118','INFO', 'transform',    'rule.apply  applicant_id_norm  in=50000  out=50000'],
+  ['10:21:02.331','INFO', 'extract',      'fetch  CREDIT.CREDIT_APPLICATION  offset=2400000  chunk=12881'],
+  ['10:15:00.118','INFO', 'scheduler',    'rehearsal started · 4 tables · estimated 18m · run-2026-0508-1015'],
+];
+
+const LOG_LINES_BY_PROJECT = {
+  p1: LOG_LINES_P1, p2: LOG_LINES_P2, p3: LOG_LINES_P3, p4: LOG_LINES_P4,
+  p5: LOG_LINES_P5, p6: LOG_LINES_P6, p7: LOG_LINES_P7, p8: LOG_LINES_P8,
+  p9: LOG_LINES_P9, p10: LOG_LINES_P10,
+};
+const getLogLines = (projectId) => LOG_LINES_BY_PROJECT[projectId] || [];
+
+/* Active LOG_LINES — re-bound by setActiveDataProject. */
+let LOG_LINES = LOG_LINES_P1;
+
 /* ─── Artifacts: schema diff between ASIS (source) and TOBE (target) ──────
    Each table lists ASIS columns + TOBE columns; diff is computed on the fly.
    TOBE columns may carry .default (initial value for newly added columns) and
    .renameFrom (detected rename candidate, possibly .renameConfidence < 1). */
 
-const SCHEMA_DIFF = [
+/* p1 - 계정원장 (Core Ledger). ACCT_MASTER, CUST_PROFILE join, TXN journals,
+   plus a few unrouted TO-BE stubs (LOAN/CARD/FX_POSITION) demonstrating
+   "DDL imported, source not bound yet". 80% mapping coverage. */
+const SCHEMA_DIFF_P1 = [
   {
     table: 'ACCT_MASTER',
     asis:  'CORE.ACCT_MASTER',
@@ -386,6 +556,612 @@ const SCHEMA_DIFF = [
   },
 ];
 
+/* p2 - 수신원장 (Deposit Accounts). sign-off, 100% mapped. */
+const SCHEMA_DIFF_P2 = [
+  {
+    table: 'DEPOSIT_ACCOUNT',
+    asis:  'DEPOSIT.DEPOSIT_ACCOUNT',
+    tobe:  'public.deposit_account',
+    _autoMapped: true,
+    sources: [{ alias: 'da', table: 'DEPOSIT.DEPOSIT_ACCOUNT', role: 'primary' }],
+    asisCols: [
+      { name: 'ACCT_NO',     type: 'VARCHAR(20)',  nullable: false, pk: true },
+      { name: 'CUST_NO',     type: 'VARCHAR(10)',  nullable: false },
+      { name: 'PROD_CD',     type: 'VARCHAR(8)',   nullable: false },
+      { name: 'BR_CD',       type: 'VARCHAR(4)',   nullable: false },
+      { name: 'CCY_CD',      type: 'CHAR(3)',      nullable: false },
+      { name: 'BAL',         type: 'NUMBER(15,2)', nullable: false },
+      { name: 'OPEN_DT',     type: 'DATE',         nullable: false },
+      { name: 'MATURE_DT',   type: 'DATE',         nullable: true  },
+      { name: 'INT_RATE',    type: 'NUMBER(9,6)',  nullable: false },
+      { name: 'STATUS',      type: 'VARCHAR(2)',   nullable: false },
+    ],
+    tobeCols: [
+      { name: 'account_no',     type: 'VARCHAR(20)',   nullable: false, pk: true, renameFrom: 'ACCT_NO',  renameConfidence: 1.00 },
+      { name: 'customer_id',    type: 'VARCHAR(10)',   nullable: false,           renameFrom: 'CUST_NO',  renameConfidence: 1.00 },
+      { name: 'product_code',   type: 'VARCHAR(8)',    nullable: false,           renameFrom: 'PROD_CD',  renameConfidence: 1.00 },
+      { name: 'branch_code',    type: 'CHAR(6)',       nullable: false,           renameFrom: 'BR_CD',    renameConfidence: 0.90 },
+      { name: 'currency_code',  type: 'CHAR(3)',       nullable: false,           renameFrom: 'CCY_CD',   renameConfidence: 1.00 },
+      { name: 'balance_amount', type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'BAL',      renameConfidence: 0.95 },
+      { name: 'opened_at',      type: 'DATE',          nullable: false,           renameFrom: 'OPEN_DT',  renameConfidence: 1.00 },
+      { name: 'maturity_date',  type: 'DATE',          nullable: true,            renameFrom: 'MATURE_DT',renameConfidence: 1.00 },
+      { name: 'interest_rate',  type: 'NUMERIC(9,6)',  nullable: false,           renameFrom: 'INT_RATE', renameConfidence: 1.00 },
+      { name: 'status',         type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS',   renameConfidence: 0.85 },
+      { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'DEPOSIT_TRANSACTION',
+    asis:  'DEPOSIT.DEPOSIT_TXN',
+    tobe:  'public.deposit_transaction',
+    _autoMapped: true,
+    sources: [{ alias: 'dt', table: 'DEPOSIT.DEPOSIT_TXN', role: 'primary' }],
+    asisCols: [
+      { name: 'TXN_ID',     type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'ACCT_NO',    type: 'VARCHAR(20)',  nullable: false },
+      { name: 'TXN_DT',     type: 'DATE',         nullable: false },
+      { name: 'AMT',        type: 'NUMBER(15,2)', nullable: false },
+      { name: 'DR_CR',      type: 'CHAR(1)',      nullable: false },
+      { name: 'CHANNEL',    type: 'VARCHAR(2)',   nullable: false },
+    ],
+    tobeCols: [
+      { name: 'transaction_id', type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'TXN_ID',  renameConfidence: 1.00 },
+      { name: 'account_no',     type: 'VARCHAR(20)',   nullable: false,           renameFrom: 'ACCT_NO', renameConfidence: 1.00 },
+      { name: 'transaction_date', type: 'DATE',        nullable: false,           renameFrom: 'TXN_DT',  renameConfidence: 1.00 },
+      { name: 'amount',         type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',     renameConfidence: 1.00 },
+      { name: 'direction',      type: 'VARCHAR(6)',    nullable: false,           renameFrom: 'DR_CR',   renameConfidence: 0.70 },
+      { name: 'channel',        type: 'VARCHAR(16)',   nullable: false,           renameFrom: 'CHANNEL', renameConfidence: 0.85 },
+      { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'INTEREST_PAYMENT',
+    asis:  'DEPOSIT.INTEREST_PAY',
+    tobe:  'public.interest_payment',
+    _autoMapped: true,
+    sources: [{ alias: 'ip', table: 'DEPOSIT.INTEREST_PAY', role: 'primary' }],
+    asisCols: [
+      { name: 'PAY_ID',      type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'ACCT_NO',     type: 'VARCHAR(20)',  nullable: false },
+      { name: 'PAY_DT',      type: 'DATE',         nullable: false },
+      { name: 'AMT',         type: 'NUMBER(13,2)', nullable: false },
+      { name: 'TAX_AMT',     type: 'NUMBER(13,2)', nullable: false },
+    ],
+    tobeCols: [
+      { name: 'payment_id',  type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'PAY_ID', renameConfidence: 1.00 },
+      { name: 'account_no',  type: 'VARCHAR(20)',   nullable: false,           renameFrom: 'ACCT_NO',renameConfidence: 1.00 },
+      { name: 'paid_at',     type: 'DATE',          nullable: false,           renameFrom: 'PAY_DT', renameConfidence: 0.92 },
+      { name: 'amount',      type: 'NUMERIC(13,2)', nullable: false,           renameFrom: 'AMT',    renameConfidence: 1.00 },
+      { name: 'tax_amount',  type: 'NUMERIC(13,2)', nullable: false,           renameFrom: 'TAX_AMT',renameConfidence: 1.00 },
+      { name: 'created_at',  type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p3 - 외환 (FX Treasury). analysis phase, AS-IS only DDL imported,
+   no TO-BE side yet. Therefore all entries have asisCols populated and
+   tobeCols intentionally empty. sources stays empty (no bindings yet). */
+const SCHEMA_DIFF_P3 = [
+  {
+    table: 'FX_RATE_DAILY',
+    asis:  'FX.FX_RATE_DAILY',
+    tobe:  null,
+    sources: [],
+    asisCols: [
+      { name: 'RATE_DT',    type: 'CHAR(8) YYYYMMDD',  nullable: false, pk: true },
+      { name: 'CCY_PAIR',   type: 'CHAR(6)',           nullable: false, pk: true },
+      { name: 'BID_RT',     type: 'COMP-3 S9(7)V9(6)', nullable: false },
+      { name: 'ASK_RT',     type: 'COMP-3 S9(7)V9(6)', nullable: false },
+      { name: 'MID_RT',     type: 'COMP-3 S9(7)V9(6)', nullable: false },
+      { name: 'SOURCE_CD',  type: 'CHAR(4)',           nullable: false },
+    ],
+    tobeCols: [],
+  },
+  {
+    table: 'FX_DEAL',
+    asis:  'FX.FX_DEAL',
+    tobe:  null,
+    sources: [],
+    asisCols: [
+      { name: 'DEAL_NO',     type: 'CHAR(16)',          nullable: false, pk: true },
+      { name: 'DEAL_DT',     type: 'CHAR(8) YYYYMMDD',  nullable: false },
+      { name: 'CCY_PAIR',    type: 'CHAR(6)',           nullable: false },
+      { name: 'BUY_AMT',     type: 'COMP-3 S9(13)V99',  nullable: false },
+      { name: 'SELL_AMT',    type: 'COMP-3 S9(13)V99',  nullable: false },
+      { name: 'TRADER_ID',   type: 'CHAR(8)',           nullable: false },
+      { name: 'CPTY_CD',     type: 'CHAR(10)',          nullable: false },
+      { name: 'STATUS_FLG',  type: 'CHAR(1)',           nullable: false },
+    ],
+    tobeCols: [],
+  },
+];
+
+/* p4 - 여신 (Loan Origination). analysis phase, TO-BE only DDL imported,
+   AS-IS not yet imported. sources empty, asisCols empty, tobeCols populated.
+   Demonstrates "TO-BE shape ready, awaiting source binding". */
+const SCHEMA_DIFF_P4 = [
+  {
+    table: 'LOAN_APPLICATION',
+    asis:  null,
+    tobe:  'public.loan_application',
+    sources: [],
+    asisCols: [],
+    tobeCols: [
+      { name: 'application_id',  type: 'VARCHAR(24)',   nullable: false, pk: true, added: true, default: 'NULL' },
+      { name: 'customer_id',     type: 'VARCHAR(10)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'product_code',    type: 'VARCHAR(8)',    nullable: false,           added: true, default: 'NULL' },
+      { name: 'requested_amount',type: 'NUMERIC(15,2)', nullable: false,           added: true, default: '0' },
+      { name: 'term_months',     type: 'SMALLINT',      nullable: false,           added: true, default: '0' },
+      { name: 'submitted_at',    type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+      { name: 'status',          type: 'VARCHAR(16)',   nullable: false,           added: true, default: "'PENDING'" },
+      { name: 'officer_id',      type: 'VARCHAR(8)',    nullable: true,            added: true, default: 'NULL' },
+      { name: 'created_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'LOAN_MASTER',
+    asis:  null,
+    tobe:  'public.loan_master',
+    sources: [],
+    asisCols: [],
+    tobeCols: [
+      { name: 'loan_id',         type: 'VARCHAR(20)',   nullable: false, pk: true, added: true, default: 'NULL' },
+      { name: 'application_id',  type: 'VARCHAR(24)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'customer_id',     type: 'VARCHAR(10)',   nullable: false,           added: true, default: 'NULL' },
+      { name: 'principal',       type: 'NUMERIC(15,2)', nullable: false,           added: true, default: '0' },
+      { name: 'interest_rate',   type: 'NUMERIC(9,6)',  nullable: false,           added: true, default: '0' },
+      { name: 'disbursed_at',    type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+      { name: 'maturity_date',   type: 'DATE',          nullable: false,           added: true, default: 'NULL' },
+      { name: 'outstanding',     type: 'NUMERIC(15,2)', nullable: false,           added: true, default: '0' },
+      { name: 'status',          type: 'VARCHAR(16)',   nullable: false,           added: true, default: "'ACTIVE'" },
+      { name: 'created_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p5 - 카드승인 (Card Authorization). hypercare phase, 100% mapped. */
+const SCHEMA_DIFF_P5 = [
+  {
+    table: 'CARD_MASTER',
+    asis:  'CARD.CARD_MASTER',
+    tobe:  'public.card_master',
+    _autoMapped: true,
+    sources: [{ alias: 'cm', table: 'CARD.CARD_MASTER', role: 'primary' }],
+    asisCols: [
+      { name: 'CARD_ID',     type: 'CHAR(20)',          nullable: false, pk: true },
+      { name: 'ACCT_NO',     type: 'CHAR(16)',          nullable: false },
+      { name: 'CARD_NO',     type: 'CHAR(19)',          nullable: false },
+      { name: 'CARD_TYPE',   type: 'CHAR(2)',           nullable: false },
+      { name: 'HOLDER_NM',   type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+      { name: 'ISSUE_DT',    type: 'CHAR(8) YYYYMMDD',  nullable: false },
+      { name: 'EXPIRE_DT',   type: 'CHAR(8) YYYYMMDD',  nullable: false },
+      { name: 'STATUS_FLG',  type: 'CHAR(1)',           nullable: false },
+      { name: 'LIMIT_AMT',   type: 'COMP-3 S9(11)V99',  nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'card_id',        type: 'VARCHAR(20)',   nullable: false, pk: true, renameFrom: 'CARD_ID', renameConfidence: 1.00 },
+      { name: 'account_no',     type: 'VARCHAR(16)',   nullable: false,           renameFrom: 'ACCT_NO', renameConfidence: 1.00 },
+      { name: 'card_number',    type: 'VARCHAR(19)',   nullable: false,           renameFrom: 'CARD_NO', renameConfidence: 1.00 },
+      { name: 'card_type',      type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'CARD_TYPE',renameConfidence: 0.85 },
+      { name: 'holder_name',    type: 'VARCHAR(80)',   nullable: false,           renameFrom: 'HOLDER_NM',renameConfidence: 0.90 },
+      { name: 'issued_at',      type: 'DATE',          nullable: false,           renameFrom: 'ISSUE_DT',renameConfidence: 1.00 },
+      { name: 'expires_at',     type: 'DATE',          nullable: false,           renameFrom: 'EXPIRE_DT',renameConfidence: 1.00 },
+      { name: 'status',         type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS_FLG',renameConfidence: 0.80 },
+      { name: 'credit_limit',   type: 'NUMERIC(13,2)', nullable: true,            renameFrom: 'LIMIT_AMT',renameConfidence: 0.90 },
+      { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'CARD_AUTH_LOG',
+    asis:  'CARD.AUTH_LOG',
+    tobe:  'public.card_auth_log',
+    _autoMapped: true,
+    sources: [{ alias: 'al', table: 'CARD.AUTH_LOG', role: 'primary' }],
+    asisCols: [
+      { name: 'AUTH_ID',     type: 'CHAR(24)',          nullable: false, pk: true },
+      { name: 'CARD_ID',     type: 'CHAR(20)',          nullable: false },
+      { name: 'AUTH_TS',     type: 'CHAR(14)',          nullable: false },
+      { name: 'AMT',         type: 'COMP-3 S9(13)V99',  nullable: false },
+      { name: 'MERCHANT_ID', type: 'CHAR(15)',          nullable: false },
+      { name: 'AUTH_CODE',   type: 'CHAR(6)',           nullable: false },
+      { name: 'RESP_CODE',   type: 'CHAR(2)',           nullable: false },
+    ],
+    tobeCols: [
+      { name: 'auth_id',     type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'AUTH_ID',    renameConfidence: 1.00 },
+      { name: 'card_id',     type: 'VARCHAR(20)',   nullable: false,           renameFrom: 'CARD_ID',    renameConfidence: 1.00 },
+      { name: 'authorized_at', type: 'TIMESTAMP',   nullable: false,           renameFrom: 'AUTH_TS',    renameConfidence: 0.85 },
+      { name: 'amount',      type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',        renameConfidence: 1.00 },
+      { name: 'merchant_id', type: 'VARCHAR(15)',   nullable: false,           renameFrom: 'MERCHANT_ID',renameConfidence: 1.00 },
+      { name: 'auth_code',   type: 'VARCHAR(6)',    nullable: false,           renameFrom: 'AUTH_CODE',  renameConfidence: 1.00 },
+      { name: 'response_code', type: 'VARCHAR(2)',  nullable: false,           renameFrom: 'RESP_CODE',  renameConfidence: 0.95 },
+      { name: 'created_at',  type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'MERCHANT',
+    asis:  'CARD.MERCHANT',
+    tobe:  'public.merchant',
+    _autoMapped: true,
+    sources: [{ alias: 'm', table: 'CARD.MERCHANT', role: 'primary' }],
+    asisCols: [
+      { name: 'MERCHANT_ID', type: 'CHAR(15)',          nullable: false, pk: true },
+      { name: 'MERCHANT_NM', type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+      { name: 'MCC',         type: 'CHAR(4)',           nullable: false },
+      { name: 'COUNTRY_CD',  type: 'CHAR(2)',           nullable: false },
+      { name: 'STATUS_FLG',  type: 'CHAR(1)',           nullable: false },
+    ],
+    tobeCols: [
+      { name: 'merchant_id', type: 'VARCHAR(15)', nullable: false, pk: true, renameFrom: 'MERCHANT_ID', renameConfidence: 1.00 },
+      { name: 'merchant_name', type: 'VARCHAR(80)', nullable: false,         renameFrom: 'MERCHANT_NM', renameConfidence: 0.90 },
+      { name: 'mcc',         type: 'CHAR(4)',     nullable: false,           renameFrom: 'MCC',         renameConfidence: 1.00 },
+      { name: 'country_code',type: 'CHAR(2)',     nullable: false,           renameFrom: 'COUNTRY_CD',  renameConfidence: 0.95 },
+      { name: 'status',      type: 'VARCHAR(12)', nullable: false,           renameFrom: 'STATUS_FLG',  renameConfidence: 0.80 },
+      { name: 'created_at',  type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p6 - 총계정원장 (GL Consolidation). done phase, 100% mapped. */
+const SCHEMA_DIFF_P6 = [
+  {
+    table: 'GL_ACCOUNT',
+    asis:  'GL.GL_ACCOUNT',
+    tobe:  'public.gl_account',
+    _autoMapped: true,
+    sources: [{ alias: 'ga', table: 'GL.GL_ACCOUNT', role: 'primary' }],
+    asisCols: [
+      { name: 'ACCT_CD',     type: 'VARCHAR(10)', nullable: false, pk: true },
+      { name: 'ACCT_NM',     type: 'VARCHAR(60)', nullable: false },
+      { name: 'ACCT_TYPE',   type: 'VARCHAR(2)',  nullable: false },
+      { name: 'PARENT_CD',   type: 'VARCHAR(10)', nullable: true  },
+      { name: 'STATUS',      type: 'VARCHAR(2)',  nullable: false },
+    ],
+    tobeCols: [
+      { name: 'account_code', type: 'VARCHAR(10)', nullable: false, pk: true, renameFrom: 'ACCT_CD', renameConfidence: 1.00 },
+      { name: 'account_name', type: 'VARCHAR(80)', nullable: false,           renameFrom: 'ACCT_NM', renameConfidence: 0.95 },
+      { name: 'account_type', type: 'VARCHAR(12)', nullable: false,           renameFrom: 'ACCT_TYPE',renameConfidence: 0.85 },
+      { name: 'parent_code',  type: 'VARCHAR(10)', nullable: true,            renameFrom: 'PARENT_CD',renameConfidence: 1.00 },
+      { name: 'status',       type: 'VARCHAR(12)', nullable: false,           renameFrom: 'STATUS',  renameConfidence: 1.00 },
+      { name: 'created_at',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'GL_JOURNAL',
+    asis:  'GL.GL_JOURNAL',
+    tobe:  'public.gl_journal',
+    _autoMapped: true,
+    sources: [{ alias: 'gj', table: 'GL.GL_JOURNAL', role: 'primary' }],
+    asisCols: [
+      { name: 'JOURNAL_ID',  type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'POSTING_DT',  type: 'DATE',         nullable: false },
+      { name: 'ACCT_CD',     type: 'VARCHAR(10)',  nullable: false },
+      { name: 'AMT',         type: 'NUMBER(15,2)', nullable: false },
+      { name: 'DR_CR',       type: 'CHAR(1)',      nullable: false },
+      { name: 'DESCR',       type: 'VARCHAR(120)', nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'journal_id',  type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'JOURNAL_ID',renameConfidence: 1.00 },
+      { name: 'posting_date',type: 'DATE',          nullable: false,           renameFrom: 'POSTING_DT',renameConfidence: 1.00 },
+      { name: 'account_code',type: 'VARCHAR(10)',   nullable: false,           renameFrom: 'ACCT_CD',   renameConfidence: 1.00 },
+      { name: 'amount',      type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',       renameConfidence: 1.00 },
+      { name: 'direction',   type: 'VARCHAR(6)',    nullable: false,           renameFrom: 'DR_CR',     renameConfidence: 0.70 },
+      { name: 'description', type: 'VARCHAR(120)',  nullable: true,            renameFrom: 'DESCR',     renameConfidence: 0.95 },
+      { name: 'created_at',  type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'GL_BALANCE',
+    asis:  'GL.GL_BALANCE',
+    tobe:  'public.gl_balance',
+    _autoMapped: true,
+    sources: [{ alias: 'gb', table: 'GL.GL_BALANCE', role: 'primary' }],
+    asisCols: [
+      { name: 'ACCT_CD',     type: 'VARCHAR(10)',  nullable: false, pk: true },
+      { name: 'BAL_DT',      type: 'DATE',         nullable: false, pk: true },
+      { name: 'BAL_AMT',     type: 'NUMBER(18,2)', nullable: false },
+      { name: 'CCY_CD',      type: 'CHAR(3)',      nullable: false },
+    ],
+    tobeCols: [
+      { name: 'account_code', type: 'VARCHAR(10)',   nullable: false, pk: true, renameFrom: 'ACCT_CD', renameConfidence: 1.00 },
+      { name: 'balance_date', type: 'DATE',          nullable: false, pk: true, renameFrom: 'BAL_DT',  renameConfidence: 1.00 },
+      { name: 'balance_amount', type: 'NUMERIC(18,2)', nullable: false,         renameFrom: 'BAL_AMT', renameConfidence: 1.00 },
+      { name: 'currency_code',type: 'CHAR(3)',       nullable: false,           renameFrom: 'CCY_CD',  renameConfidence: 1.00 },
+      { name: 'created_at',   type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p7 - 무역금융 (Trade Finance). done phase, 100% mapped. */
+const SCHEMA_DIFF_P7 = [
+  {
+    table: 'LC_MASTER',
+    asis:  'TRADE.LC_MASTER',
+    tobe:  'public.lc_master',
+    _autoMapped: true,
+    sources: [{ alias: 'lc', table: 'TRADE.LC_MASTER', role: 'primary' }],
+    asisCols: [
+      { name: 'LC_NO',        type: 'CHAR(16)',         nullable: false, pk: true },
+      { name: 'ISSUE_DT',     type: 'CHAR(8) YYYYMMDD', nullable: false },
+      { name: 'EXPIRE_DT',    type: 'CHAR(8) YYYYMMDD', nullable: false },
+      { name: 'APPLICANT',    type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+      { name: 'BENEFICIARY',  type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+      { name: 'AMT',          type: 'COMP-3 S9(13)V99', nullable: false },
+      { name: 'CCY_CD',       type: 'CHAR(3)',          nullable: false },
+      { name: 'STATUS_FLG',   type: 'CHAR(1)',          nullable: false },
+    ],
+    tobeCols: [
+      { name: 'lc_number',   type: 'VARCHAR(16)',   nullable: false, pk: true, renameFrom: 'LC_NO',      renameConfidence: 1.00 },
+      { name: 'issued_at',   type: 'DATE',          nullable: false,           renameFrom: 'ISSUE_DT',   renameConfidence: 1.00 },
+      { name: 'expires_at',  type: 'DATE',          nullable: false,           renameFrom: 'EXPIRE_DT',  renameConfidence: 1.00 },
+      { name: 'applicant',   type: 'VARCHAR(80)',   nullable: false,           renameFrom: 'APPLICANT',  renameConfidence: 0.90 },
+      { name: 'beneficiary', type: 'VARCHAR(80)',   nullable: false,           renameFrom: 'BENEFICIARY',renameConfidence: 0.90 },
+      { name: 'amount',      type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',        renameConfidence: 1.00 },
+      { name: 'currency_code', type: 'CHAR(3)',     nullable: false,           renameFrom: 'CCY_CD',     renameConfidence: 1.00 },
+      { name: 'status',      type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS_FLG', renameConfidence: 0.80 },
+      { name: 'created_at',  type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'EXPORT_BILL',
+    asis:  'TRADE.EXPORT_BILL',
+    tobe:  'public.export_bill',
+    _autoMapped: true,
+    sources: [{ alias: 'eb', table: 'TRADE.EXPORT_BILL', role: 'primary' }],
+    asisCols: [
+      { name: 'BILL_NO',     type: 'CHAR(16)',         nullable: false, pk: true },
+      { name: 'LC_NO',       type: 'CHAR(16)',         nullable: true  },
+      { name: 'ISSUE_DT',    type: 'CHAR(8) YYYYMMDD', nullable: false },
+      { name: 'AMT',         type: 'COMP-3 S9(13)V99', nullable: false },
+      { name: 'CCY_CD',      type: 'CHAR(3)',          nullable: false },
+      { name: 'STATUS_FLG',  type: 'CHAR(1)',          nullable: false },
+    ],
+    tobeCols: [
+      { name: 'bill_number', type: 'VARCHAR(16)',   nullable: false, pk: true, renameFrom: 'BILL_NO',    renameConfidence: 1.00 },
+      { name: 'lc_number',   type: 'VARCHAR(16)',   nullable: true,            renameFrom: 'LC_NO',      renameConfidence: 1.00 },
+      { name: 'issued_at',   type: 'DATE',          nullable: false,           renameFrom: 'ISSUE_DT',   renameConfidence: 1.00 },
+      { name: 'amount',      type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',        renameConfidence: 1.00 },
+      { name: 'currency_code', type: 'CHAR(3)',     nullable: false,           renameFrom: 'CCY_CD',     renameConfidence: 1.00 },
+      { name: 'status',      type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS_FLG', renameConfidence: 0.80 },
+      { name: 'created_at',  type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p8 - 송금허브 (Remittance Hub). planning phase, no DDL imported yet. */
+const SCHEMA_DIFF_P8 = [];
+
+/* p9 - 인터넷뱅킹 (Internet Banking). cutover in progress, 100% mapped. */
+const SCHEMA_DIFF_P9 = [
+  {
+    table: 'IB_USER',
+    asis:  'IB.IB_USER',
+    tobe:  'public.ib_user',
+    _autoMapped: true,
+    sources: [{ alias: 'u', table: 'IB.IB_USER', role: 'primary' }],
+    asisCols: [
+      { name: 'USER_ID',      type: 'VARCHAR(20)', nullable: false, pk: true },
+      { name: 'CUST_NO',      type: 'VARCHAR(10)', nullable: false },
+      { name: 'LOGIN_ID',     type: 'VARCHAR(30)', nullable: false },
+      { name: 'EMAIL',        type: 'VARCHAR(80)', nullable: true  },
+      { name: 'TEL_NO',       type: 'VARCHAR(15)', nullable: true  },
+      { name: 'STATUS',       type: 'VARCHAR(2)',  nullable: false },
+      { name: 'LAST_LOGIN_TS',type: 'TIMESTAMP',   nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'user_id',      type: 'VARCHAR(20)', nullable: false, pk: true, renameFrom: 'USER_ID',  renameConfidence: 1.00 },
+      { name: 'customer_id',  type: 'VARCHAR(10)', nullable: false,           renameFrom: 'CUST_NO',  renameConfidence: 1.00 },
+      { name: 'login_id',     type: 'VARCHAR(30)', nullable: false,           renameFrom: 'LOGIN_ID', renameConfidence: 1.00 },
+      { name: 'email',        type: 'VARCHAR(120)',nullable: true,            renameFrom: 'EMAIL',    renameConfidence: 1.00 },
+      { name: 'phone_e164',   type: 'VARCHAR(20)', nullable: true,            renameFrom: 'TEL_NO',   renameConfidence: 0.65 },
+      { name: 'status',       type: 'VARCHAR(12)', nullable: false,           renameFrom: 'STATUS',   renameConfidence: 0.85 },
+      { name: 'last_login_at',type: 'TIMESTAMPTZ', nullable: true,            renameFrom: 'LAST_LOGIN_TS', renameConfidence: 0.92 },
+      { name: 'created_at',   type: 'TIMESTAMP',   nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'IB_SESSION',
+    asis:  'IB.IB_SESSION',
+    tobe:  'public.ib_session',
+    _autoMapped: true,
+    sources: [{ alias: 's', table: 'IB.IB_SESSION', role: 'primary' }],
+    asisCols: [
+      { name: 'SESSION_ID',   type: 'VARCHAR(40)', nullable: false, pk: true },
+      { name: 'USER_ID',      type: 'VARCHAR(20)', nullable: false },
+      { name: 'TOKEN_HASH',   type: 'VARCHAR(64)', nullable: false },
+      { name: 'ISSUED_TS',    type: 'TIMESTAMP',   nullable: false },
+      { name: 'EXPIRE_TS',    type: 'TIMESTAMP',   nullable: false },
+      { name: 'IP_ADDR',      type: 'VARCHAR(45)', nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'session_id',   type: 'VARCHAR(40)',  nullable: false, pk: true, renameFrom: 'SESSION_ID',renameConfidence: 1.00 },
+      { name: 'user_id',      type: 'VARCHAR(20)',  nullable: false,           renameFrom: 'USER_ID',   renameConfidence: 1.00 },
+      { name: 'token_hash',   type: 'VARCHAR(128)', nullable: false,           renameFrom: 'TOKEN_HASH',renameConfidence: 0.92 },
+      { name: 'issued_at',    type: 'TIMESTAMPTZ',  nullable: false,           renameFrom: 'ISSUED_TS', renameConfidence: 0.90 },
+      { name: 'expires_at',   type: 'TIMESTAMPTZ',  nullable: false,           renameFrom: 'EXPIRE_TS', renameConfidence: 0.90 },
+      { name: 'ip_address',   type: 'INET',         nullable: true,            renameFrom: 'IP_ADDR',   renameConfidence: 0.80 },
+      { name: 'created_at',   type: 'TIMESTAMP',    nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'IB_TRANSFER',
+    asis:  'IB.IB_TRANSFER',
+    tobe:  'public.ib_transfer',
+    _autoMapped: true,
+    sources: [{ alias: 't', table: 'IB.IB_TRANSFER', role: 'primary' }],
+    asisCols: [
+      { name: 'TRANSFER_ID',  type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'FROM_ACCT',    type: 'VARCHAR(20)',  nullable: false },
+      { name: 'TO_ACCT',      type: 'VARCHAR(20)',  nullable: false },
+      { name: 'AMT',          type: 'NUMBER(13,2)', nullable: false },
+      { name: 'CCY_CD',       type: 'CHAR(3)',      nullable: false },
+      { name: 'TRANSFER_TS',  type: 'TIMESTAMP',    nullable: false },
+      { name: 'STATUS',       type: 'VARCHAR(2)',   nullable: false },
+    ],
+    tobeCols: [
+      { name: 'transfer_id',  type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'TRANSFER_ID', renameConfidence: 1.00 },
+      { name: 'from_account', type: 'VARCHAR(20)',   nullable: false,           renameFrom: 'FROM_ACCT',   renameConfidence: 0.95 },
+      { name: 'to_account',   type: 'VARCHAR(20)',   nullable: false,           renameFrom: 'TO_ACCT',     renameConfidence: 0.95 },
+      { name: 'amount',       type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'AMT',         renameConfidence: 0.92 },
+      { name: 'currency_code',type: 'CHAR(3)',       nullable: false,           renameFrom: 'CCY_CD',      renameConfidence: 1.00 },
+      { name: 'transferred_at', type: 'TIMESTAMPTZ', nullable: false,           renameFrom: 'TRANSFER_TS', renameConfidence: 0.90 },
+      { name: 'status',       type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS',      renameConfidence: 0.85 },
+      { name: 'created_at',   type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'IB_AUDIT',
+    asis:  'IB.IB_AUDIT',
+    tobe:  'public.ib_audit',
+    _autoMapped: true,
+    sources: [{ alias: 'a', table: 'IB.IB_AUDIT', role: 'primary' }],
+    asisCols: [
+      { name: 'AUDIT_ID',     type: 'VARCHAR(24)', nullable: false, pk: true },
+      { name: 'USER_ID',      type: 'VARCHAR(20)', nullable: true  },
+      { name: 'EVENT_TYPE',   type: 'VARCHAR(20)', nullable: false },
+      { name: 'EVENT_TS',     type: 'TIMESTAMP',   nullable: false },
+      { name: 'IP_ADDR',      type: 'VARCHAR(45)', nullable: true  },
+      { name: 'DETAIL',       type: 'VARCHAR(500)', nullable: true },
+    ],
+    tobeCols: [
+      { name: 'audit_id',   type: 'VARCHAR(24)',  nullable: false, pk: true, renameFrom: 'AUDIT_ID',  renameConfidence: 1.00 },
+      { name: 'user_id',    type: 'VARCHAR(20)',  nullable: true,            renameFrom: 'USER_ID',   renameConfidence: 1.00 },
+      { name: 'event_type', type: 'VARCHAR(20)',  nullable: false,           renameFrom: 'EVENT_TYPE',renameConfidence: 1.00 },
+      { name: 'event_at',   type: 'TIMESTAMPTZ',  nullable: false,           renameFrom: 'EVENT_TS',  renameConfidence: 0.90 },
+      { name: 'ip_address', type: 'INET',         nullable: true,            renameFrom: 'IP_ADDR',   renameConfidence: 0.80 },
+      { name: 'detail',     type: 'JSONB',        nullable: true,            renameFrom: 'DETAIL',    renameConfidence: 0.55 },
+      { name: 'created_at', type: 'TIMESTAMP',    nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+/* p10 - 신용평가 (Credit Scoring). rehearsal phase, ~80% mapped — 3 of 4
+   tables auto-mapped, CREDIT_DECISION still in user-review. */
+const SCHEMA_DIFF_P10 = [
+  {
+    table: 'CREDIT_APPLICATION',
+    asis:  'CREDIT.CREDIT_APPLICATION',
+    tobe:  'public.credit_application',
+    _autoMapped: true,
+    sources: [{ alias: 'ca', table: 'CREDIT.CREDIT_APPLICATION', role: 'primary' }],
+    asisCols: [
+      { name: 'APP_ID',       type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'CUST_NO',      type: 'VARCHAR(10)',  nullable: false },
+      { name: 'PROD_CD',      type: 'VARCHAR(8)',   nullable: false },
+      { name: 'REQ_AMT',      type: 'NUMBER(15,2)', nullable: false },
+      { name: 'REQ_DT',       type: 'DATE',         nullable: false },
+      { name: 'PURPOSE_CD',   type: 'VARCHAR(4)',   nullable: false },
+      { name: 'STATUS',       type: 'VARCHAR(2)',   nullable: false },
+    ],
+    tobeCols: [
+      { name: 'application_id',   type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'APP_ID',     renameConfidence: 1.00 },
+      { name: 'customer_id',      type: 'VARCHAR(10)',   nullable: false,           renameFrom: 'CUST_NO',    renameConfidence: 1.00 },
+      { name: 'product_code',     type: 'VARCHAR(8)',    nullable: false,           renameFrom: 'PROD_CD',    renameConfidence: 1.00 },
+      { name: 'requested_amount', type: 'NUMERIC(15,2)', nullable: false,           renameFrom: 'REQ_AMT',    renameConfidence: 1.00 },
+      { name: 'requested_at',     type: 'DATE',          nullable: false,           renameFrom: 'REQ_DT',     renameConfidence: 0.92 },
+      { name: 'purpose_code',     type: 'VARCHAR(4)',    nullable: false,           renameFrom: 'PURPOSE_CD', renameConfidence: 1.00 },
+      { name: 'status',           type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'STATUS',     renameConfidence: 0.85 },
+      { name: 'created_at',       type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'CREDIT_SCORE',
+    asis:  'CREDIT.CREDIT_SCORE',
+    tobe:  'public.credit_score',
+    _autoMapped: true,
+    sources: [{ alias: 'cs', table: 'CREDIT.CREDIT_SCORE', role: 'primary' }],
+    asisCols: [
+      { name: 'SCORE_ID',   type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'CUST_NO',    type: 'VARCHAR(10)',  nullable: false },
+      { name: 'SCORE',      type: 'NUMBER(5,1)',  nullable: false },
+      { name: 'GRADE',      type: 'CHAR(2)',      nullable: false },
+      { name: 'MODEL_VER',  type: 'VARCHAR(8)',   nullable: false },
+      { name: 'CALC_DT',    type: 'DATE',         nullable: false },
+    ],
+    tobeCols: [
+      { name: 'score_id',       type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'SCORE_ID',  renameConfidence: 1.00 },
+      { name: 'customer_id',    type: 'VARCHAR(10)',   nullable: false,           renameFrom: 'CUST_NO',   renameConfidence: 1.00 },
+      { name: 'score',          type: 'NUMERIC(5,1)',  nullable: false,           renameFrom: 'SCORE',     renameConfidence: 1.00 },
+      { name: 'grade',          type: 'CHAR(2)',       nullable: false,           renameFrom: 'GRADE',     renameConfidence: 1.00 },
+      { name: 'model_version',  type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'MODEL_VER', renameConfidence: 0.95 },
+      { name: 'calculated_at',  type: 'DATE',          nullable: false,           renameFrom: 'CALC_DT',   renameConfidence: 0.92 },
+      { name: 'created_at',     type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  {
+    table: 'CREDIT_HISTORY',
+    asis:  'CREDIT.CREDIT_HISTORY',
+    tobe:  'public.credit_history',
+    _autoMapped: true,
+    sources: [{ alias: 'ch', table: 'CREDIT.CREDIT_HISTORY', role: 'primary' }],
+    asisCols: [
+      { name: 'HIST_ID',    type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'CUST_NO',    type: 'VARCHAR(10)',  nullable: false },
+      { name: 'EVENT_TYPE', type: 'VARCHAR(4)',   nullable: false },
+      { name: 'EVENT_DT',   type: 'DATE',         nullable: false },
+      { name: 'AMT',        type: 'NUMBER(15,2)', nullable: true  },
+      { name: 'INST_CD',    type: 'VARCHAR(6)',   nullable: false },
+      { name: 'NOTE',       type: 'VARCHAR(200)', nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'history_id',      type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'HIST_ID',   renameConfidence: 1.00 },
+      { name: 'customer_id',     type: 'VARCHAR(10)',   nullable: false,           renameFrom: 'CUST_NO',   renameConfidence: 1.00 },
+      { name: 'event_type',      type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'EVENT_TYPE',renameConfidence: 0.85 },
+      { name: 'occurred_at',     type: 'DATE',          nullable: false,           renameFrom: 'EVENT_DT',  renameConfidence: 0.90 },
+      { name: 'amount',          type: 'NUMERIC(15,2)', nullable: true,            renameFrom: 'AMT',       renameConfidence: 1.00 },
+      { name: 'institution_code',type: 'VARCHAR(6)',    nullable: false,           renameFrom: 'INST_CD',   renameConfidence: 1.00 },
+      { name: 'note',            type: 'VARCHAR(200)',  nullable: true,            renameFrom: 'NOTE',      renameConfidence: 1.00 },
+      { name: 'created_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+  /* CREDIT_DECISION 은 아직 매핑 작업 진행 중 — _autoMapped 플래그 없음 */
+  {
+    table: 'CREDIT_DECISION',
+    asis:  'CREDIT.CREDIT_DECISION',
+    tobe:  'public.credit_decision',
+    sources: [{ alias: 'cd', table: 'CREDIT.CREDIT_DECISION', role: 'primary' }],
+    _autoMapped: true,
+    asisCols: [
+      { name: 'DEC_ID',      type: 'VARCHAR(24)',  nullable: false, pk: true },
+      { name: 'APP_ID',      type: 'VARCHAR(24)',  nullable: false },
+      { name: 'DECISION',    type: 'CHAR(1)',      nullable: false },
+      { name: 'APPROVED_AMT',type: 'NUMBER(15,2)', nullable: true  },
+      { name: 'REVIEWER',    type: 'VARCHAR(8)',   nullable: false },
+      { name: 'DEC_DT',      type: 'DATE',         nullable: false },
+      { name: 'REASON_CD',   type: 'VARCHAR(4)',   nullable: true  },
+    ],
+    tobeCols: [
+      { name: 'decision_id',     type: 'VARCHAR(24)',   nullable: false, pk: true, renameFrom: 'DEC_ID',      renameConfidence: 1.00 },
+      { name: 'application_id',  type: 'VARCHAR(24)',   nullable: false,           renameFrom: 'APP_ID',      renameConfidence: 1.00 },
+      { name: 'decision',        type: 'VARCHAR(12)',   nullable: false,           renameFrom: 'DECISION',    renameConfidence: 0.70 },
+      { name: 'approved_amount', type: 'NUMERIC(15,2)', nullable: true,            renameFrom: 'APPROVED_AMT',renameConfidence: 1.00 },
+      { name: 'reviewer_id',     type: 'VARCHAR(8)',    nullable: false,           renameFrom: 'REVIEWER',    renameConfidence: 0.85 },
+      { name: 'decided_at',      type: 'DATE',          nullable: false,           renameFrom: 'DEC_DT',      renameConfidence: 0.92 },
+      { name: 'reason_code',     type: 'VARCHAR(4)',    nullable: true,            renameFrom: 'REASON_CD',   renameConfidence: 1.00 },
+      { name: 'created_at',      type: 'TIMESTAMP',     nullable: false,           added: true, default: 'NOW()' },
+    ],
+  },
+];
+
+const SCHEMA_DIFF_BY_PROJECT = {
+  p1: SCHEMA_DIFF_P1,
+  p2: SCHEMA_DIFF_P2,
+  p3: SCHEMA_DIFF_P3,
+  p4: SCHEMA_DIFF_P4,
+  p5: SCHEMA_DIFF_P5,
+  p6: SCHEMA_DIFF_P6,
+  p7: SCHEMA_DIFF_P7,
+  p8: SCHEMA_DIFF_P8,
+  p9: SCHEMA_DIFF_P9,
+  p10: SCHEMA_DIFF_P10,
+};
+
+/* Active SCHEMA_DIFF — re-bound by setActiveDataProject(projectId) so that
+   legacy code using the global symbol stays in sync with the active project.
+   Kept as 'let' so we can mutate the binding when the active project changes.
+   The first item RUNS_BY_PROJECT.p1 references this for default p1 view. */
+let SCHEMA_DIFF = SCHEMA_DIFF_P1;
+const getSchemaDiffByProject = (projectId) => SCHEMA_DIFF_BY_PROJECT[projectId] || [];
+
 /* ─── Synthesis helpers ────────────────────────────────────────────
    Column-level mapping rows can be derived on-the-fly from a SCHEMA_DIFF
    entry. Hand-authored MAPPING (for ACCT_MASTER) is kept as-is and used
@@ -453,11 +1229,16 @@ const mappingsFromSchemaDiff = (t) => {
      would be guesses; user picks).
        - nullable               → queued (run will fill NULL)
        - NOT NULL with default  → queued (run will use the DDL default)
-       - NOT NULL no default    → err   (must assign source or fix DDL) */
+       - NOT NULL no default    → err   (must assign source or fix DDL)
+     Exception: if the SCHEMA_DIFF entry carries `_autoMapped: true`, the
+     project is past the mapping phase (sign-off / cutover / hypercare /
+     done) and we synthesize ok-status rows from each tobeCol.renameFrom
+     so the Mapping screen reflects the approved spec. */
   const asisCols = effectiveAsisCols(t);
   const asisByName = Object.fromEntries(asisCols.map(c => [c.name, c]));
   const overrides = getColumnOverrides(t.table);
   const hasBinding = (t.sources || []).length > 0;
+  const autoMapped = !!t._autoMapped;
 
   t.tobeCols.forEach(tc => {
     const ov = overrides[tc.name];
@@ -467,6 +1248,40 @@ const mappingsFromSchemaDiff = (t) => {
     }
     const tgtNullable = tc.nullable !== false;
     const ddlDefault = tc.default && tc.default !== 'NULL' ? tc.default : null;
+
+    /* Auto-mapped projects: synthesize an 'added' row for new columns and a
+       rename-based row for everything that has a renameFrom binding. This
+       mirrors what the user would have produced manually after sign-off. */
+    if (autoMapped) {
+      if (tc.added) {
+        rows.push({
+          src: '—', srcType: '—',
+          tgt: tc.name, tgtType: tc.type,
+          rule: 'added', status: 'ok',
+          pk: !!tc.pk, tgtNullable, ddlDefault,
+          note: ddlDefault ? `no AS-IS source · default = ${ddlDefault}` : 'no AS-IS source · added column',
+          sourceAlias: null,
+        });
+        return;
+      }
+      if (tc.renameFrom) {
+        const ac = asisByName[tc.renameFrom];
+        if (ac) {
+          const typeDelta = ac.type !== tc.type;
+          rows.push({
+            src: ac.name, srcType: ac.type,
+            tgt: tc.name, tgtType: tc.type,
+            rule: typeDelta ? 'rule' : 'auto',
+            status: 'ok',
+            pk: !!tc.pk, tgtNullable, ddlDefault,
+            note: typeDelta ? `auto: ${ac.type} → ${tc.type}` : '',
+            sourceAlias: ac.source || (t.sources?.[0]?.alias) || null,
+          });
+          return;
+        }
+      }
+    }
+
     rows.push({
       src: '—', srcType: '—',
       tgt: tc.name, tgtType: tc.type,
@@ -550,7 +1365,7 @@ const applyMockTransform = (srcVal, row) => {
    Build helpers overlay routing/composition info from SCHEMA_DIFF
    but never let that information remove a table from the inventory. */
 
-const ASIS_SCHEMA_TABLES = [
+const ASIS_SCHEMA_TABLES_P1 = [
   { name: 'CORE.ACCT_MASTER',       columnCount: 13, rows: 18_442_331 },
   { name: 'CORE.CUST_PROFILE',      columnCount: 8,  rows: 2_118_774 },
   { name: 'CORE.CUST_CONTACT',      columnCount: 4,  rows: 4_882_091 },
@@ -561,7 +1376,7 @@ const ASIS_SCHEMA_TABLES = [
   { name: 'CORE.ORG_HIST',          columnCount: 8,  rows: 3120,        note: 'pending steward decision' },
 ];
 
-const TOBE_SCHEMA_TABLES = [
+const TOBE_SCHEMA_TABLES_P1 = [
   { name: 'public.account',          columnCount: 18 },
   { name: 'public.customer',         columnCount: 14 },
   { name: 'public.transaction_2024', columnCount: 12 },
@@ -570,6 +1385,114 @@ const TOBE_SCHEMA_TABLES = [
   { name: 'public.card',             columnCount: 11, note: 'Card Authorization scope · no source assigned yet' },
   { name: 'public.fx_position',      columnCount: 7,  note: 'FX Treasury scope · no source assigned yet' },
 ];
+
+/* p2 - 수신원장 */
+const ASIS_SCHEMA_TABLES_P2 = [
+  { name: 'DEPOSIT.DEPOSIT_ACCOUNT', columnCount: 10, rows: 8_412_330 },
+  { name: 'DEPOSIT.DEPOSIT_TXN',     columnCount: 6,  rows: 142_881_004 },
+  { name: 'DEPOSIT.INTEREST_PAY',    columnCount: 5,  rows: 18_004_551 },
+];
+const TOBE_SCHEMA_TABLES_P2 = [
+  { name: 'public.deposit_account',     columnCount: 11 },
+  { name: 'public.deposit_transaction', columnCount: 7 },
+  { name: 'public.interest_payment',    columnCount: 6 },
+];
+
+/* p3 - 외환 (AS-IS only, no TO-BE) */
+const ASIS_SCHEMA_TABLES_P3 = [
+  { name: 'FX.FX_RATE_DAILY', columnCount: 6, rows: 44_211 },
+  { name: 'FX.FX_DEAL',       columnCount: 8, rows: 2_881_004 },
+];
+const TOBE_SCHEMA_TABLES_P3 = [];
+
+/* p4 - 여신 (TO-BE only, no AS-IS yet) */
+const ASIS_SCHEMA_TABLES_P4 = [];
+const TOBE_SCHEMA_TABLES_P4 = [
+  { name: 'public.loan_application', columnCount: 9 },
+  { name: 'public.loan_master',      columnCount: 10 },
+];
+
+/* p5 - 카드승인 */
+const ASIS_SCHEMA_TABLES_P5 = [
+  { name: 'CARD.CARD_MASTER', columnCount: 9, rows: 3_002_114 },
+  { name: 'CARD.AUTH_LOG',    columnCount: 7, rows: 812_004_552 },
+  { name: 'CARD.MERCHANT',    columnCount: 5, rows: 124_882 },
+];
+const TOBE_SCHEMA_TABLES_P5 = [
+  { name: 'public.card_master',   columnCount: 10 },
+  { name: 'public.card_auth_log', columnCount: 8 },
+  { name: 'public.merchant',      columnCount: 6 },
+];
+
+/* p6 - 총계정원장 */
+const ASIS_SCHEMA_TABLES_P6 = [
+  { name: 'GL.GL_ACCOUNT', columnCount: 5, rows: 18_442 },
+  { name: 'GL.GL_JOURNAL', columnCount: 6, rows: 98_221_412 },
+  { name: 'GL.GL_BALANCE', columnCount: 4, rows: 2_881_009 },
+];
+const TOBE_SCHEMA_TABLES_P6 = [
+  { name: 'public.gl_account', columnCount: 6 },
+  { name: 'public.gl_journal', columnCount: 7 },
+  { name: 'public.gl_balance', columnCount: 5 },
+];
+
+/* p7 - 무역금융 */
+const ASIS_SCHEMA_TABLES_P7 = [
+  { name: 'TRADE.LC_MASTER',   columnCount: 8, rows: 88_412 },
+  { name: 'TRADE.EXPORT_BILL', columnCount: 6, rows: 142_551 },
+];
+const TOBE_SCHEMA_TABLES_P7 = [
+  { name: 'public.lc_master',   columnCount: 9 },
+  { name: 'public.export_bill', columnCount: 7 },
+];
+
+/* p8 - 송금허브 (no DDL imported yet) */
+const ASIS_SCHEMA_TABLES_P8 = [];
+const TOBE_SCHEMA_TABLES_P8 = [];
+
+/* p9 - 인터넷뱅킹 */
+const ASIS_SCHEMA_TABLES_P9 = [
+  { name: 'IB.IB_USER',     columnCount: 7, rows: 4_212_881 },
+  { name: 'IB.IB_SESSION',  columnCount: 6, rows: 88_412_551 },
+  { name: 'IB.IB_TRANSFER', columnCount: 7, rows: 412_882_104 },
+  { name: 'IB.IB_AUDIT',    columnCount: 6, rows: 1_204_882_551 },
+];
+const TOBE_SCHEMA_TABLES_P9 = [
+  { name: 'public.ib_user',     columnCount: 8 },
+  { name: 'public.ib_session',  columnCount: 7 },
+  { name: 'public.ib_transfer', columnCount: 8 },
+  { name: 'public.ib_audit',    columnCount: 7 },
+];
+
+/* p10 - 신용평가 */
+const ASIS_SCHEMA_TABLES_P10 = [
+  { name: 'CREDIT.CREDIT_APPLICATION', columnCount: 7, rows: 2_412_881 },
+  { name: 'CREDIT.CREDIT_SCORE',       columnCount: 6, rows: 18_004_551 },
+  { name: 'CREDIT.CREDIT_HISTORY',     columnCount: 7, rows: 88_412_551 },
+  { name: 'CREDIT.CREDIT_DECISION',    columnCount: 7, rows: 1_842_004 },
+];
+const TOBE_SCHEMA_TABLES_P10 = [
+  { name: 'public.credit_application', columnCount: 8 },
+  { name: 'public.credit_score',       columnCount: 7 },
+  { name: 'public.credit_history',     columnCount: 8 },
+  { name: 'public.credit_decision',    columnCount: 8 },
+];
+
+const ASIS_SCHEMA_TABLES_BY_PROJECT = {
+  p1: ASIS_SCHEMA_TABLES_P1, p2: ASIS_SCHEMA_TABLES_P2, p3: ASIS_SCHEMA_TABLES_P3,
+  p4: ASIS_SCHEMA_TABLES_P4, p5: ASIS_SCHEMA_TABLES_P5, p6: ASIS_SCHEMA_TABLES_P6,
+  p7: ASIS_SCHEMA_TABLES_P7, p8: ASIS_SCHEMA_TABLES_P8, p9: ASIS_SCHEMA_TABLES_P9,
+  p10: ASIS_SCHEMA_TABLES_P10,
+};
+const TOBE_SCHEMA_TABLES_BY_PROJECT = {
+  p1: TOBE_SCHEMA_TABLES_P1, p2: TOBE_SCHEMA_TABLES_P2, p3: TOBE_SCHEMA_TABLES_P3,
+  p4: TOBE_SCHEMA_TABLES_P4, p5: TOBE_SCHEMA_TABLES_P5, p6: TOBE_SCHEMA_TABLES_P6,
+  p7: TOBE_SCHEMA_TABLES_P7, p8: TOBE_SCHEMA_TABLES_P8, p9: TOBE_SCHEMA_TABLES_P9,
+  p10: TOBE_SCHEMA_TABLES_P10,
+};
+
+let ASIS_SCHEMA_TABLES = ASIS_SCHEMA_TABLES_P1;
+let TOBE_SCHEMA_TABLES = TOBE_SCHEMA_TABLES_P1;
 
 /* Per-AS-IS-table column schema — the canonical "DDL parse output" for every
    known AS-IS table. effectiveAsisCols(sd) reads this keyed by the current
@@ -644,6 +1567,200 @@ const ASIS_COLUMN_SCHEMA = {
     { name: 'MANAGER',    type: 'CHAR(8)',              nullable: true },
     { name: 'REGION_CD',  type: 'CHAR(2)',              nullable: true },
     { name: 'STATUS',     type: 'CHAR(1)',              nullable: false },
+  ],
+
+  /* p2 - 수신원장 */
+  'DEPOSIT.DEPOSIT_ACCOUNT': [
+    { name: 'ACCT_NO',   type: 'VARCHAR(20)',  nullable: false, pk: true },
+    { name: 'CUST_NO',   type: 'VARCHAR(10)',  nullable: false },
+    { name: 'PROD_CD',   type: 'VARCHAR(8)',   nullable: false },
+    { name: 'BR_CD',     type: 'VARCHAR(4)',   nullable: false },
+    { name: 'CCY_CD',    type: 'CHAR(3)',      nullable: false },
+    { name: 'BAL',       type: 'NUMBER(15,2)', nullable: false },
+    { name: 'OPEN_DT',   type: 'DATE',         nullable: false },
+    { name: 'MATURE_DT', type: 'DATE',         nullable: true  },
+    { name: 'INT_RATE',  type: 'NUMBER(9,6)',  nullable: false },
+    { name: 'STATUS',    type: 'VARCHAR(2)',   nullable: false },
+  ],
+  'DEPOSIT.DEPOSIT_TXN': [
+    { name: 'TXN_ID',  type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'ACCT_NO', type: 'VARCHAR(20)',  nullable: false },
+    { name: 'TXN_DT',  type: 'DATE',         nullable: false },
+    { name: 'AMT',     type: 'NUMBER(15,2)', nullable: false },
+    { name: 'DR_CR',   type: 'CHAR(1)',      nullable: false },
+    { name: 'CHANNEL', type: 'VARCHAR(2)',   nullable: false },
+  ],
+  'DEPOSIT.INTEREST_PAY': [
+    { name: 'PAY_ID',  type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'ACCT_NO', type: 'VARCHAR(20)',  nullable: false },
+    { name: 'PAY_DT',  type: 'DATE',         nullable: false },
+    { name: 'AMT',     type: 'NUMBER(13,2)', nullable: false },
+    { name: 'TAX_AMT', type: 'NUMBER(13,2)', nullable: false },
+  ],
+
+  /* p3 - 외환 */
+  'FX.FX_RATE_DAILY': [
+    { name: 'RATE_DT',   type: 'CHAR(8) YYYYMMDD',  nullable: false, pk: true },
+    { name: 'CCY_PAIR',  type: 'CHAR(6)',           nullable: false, pk: true },
+    { name: 'BID_RT',    type: 'COMP-3 S9(7)V9(6)', nullable: false },
+    { name: 'ASK_RT',    type: 'COMP-3 S9(7)V9(6)', nullable: false },
+    { name: 'MID_RT',    type: 'COMP-3 S9(7)V9(6)', nullable: false },
+    { name: 'SOURCE_CD', type: 'CHAR(4)',           nullable: false },
+  ],
+  'FX.FX_DEAL': [
+    { name: 'DEAL_NO',    type: 'CHAR(16)',          nullable: false, pk: true },
+    { name: 'DEAL_DT',    type: 'CHAR(8) YYYYMMDD',  nullable: false },
+    { name: 'CCY_PAIR',   type: 'CHAR(6)',           nullable: false },
+    { name: 'BUY_AMT',    type: 'COMP-3 S9(13)V99',  nullable: false },
+    { name: 'SELL_AMT',   type: 'COMP-3 S9(13)V99',  nullable: false },
+    { name: 'TRADER_ID',  type: 'CHAR(8)',           nullable: false },
+    { name: 'CPTY_CD',    type: 'CHAR(10)',          nullable: false },
+    { name: 'STATUS_FLG', type: 'CHAR(1)',           nullable: false },
+  ],
+
+  /* p5 - 카드승인 */
+  'CARD.CARD_MASTER': [
+    { name: 'CARD_ID',    type: 'CHAR(20)',             nullable: false, pk: true },
+    { name: 'ACCT_NO',    type: 'CHAR(16)',             nullable: false },
+    { name: 'CARD_NO',    type: 'CHAR(19)',             nullable: false },
+    { name: 'CARD_TYPE',  type: 'CHAR(2)',              nullable: false },
+    { name: 'HOLDER_NM',  type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+    { name: 'ISSUE_DT',   type: 'CHAR(8) YYYYMMDD',     nullable: false },
+    { name: 'EXPIRE_DT',  type: 'CHAR(8) YYYYMMDD',     nullable: false },
+    { name: 'STATUS_FLG', type: 'CHAR(1)',              nullable: false },
+    { name: 'LIMIT_AMT',  type: 'COMP-3 S9(11)V99',     nullable: true  },
+  ],
+  'CARD.AUTH_LOG': [
+    { name: 'AUTH_ID',     type: 'CHAR(24)',         nullable: false, pk: true },
+    { name: 'CARD_ID',     type: 'CHAR(20)',         nullable: false },
+    { name: 'AUTH_TS',     type: 'CHAR(14)',         nullable: false },
+    { name: 'AMT',         type: 'COMP-3 S9(13)V99', nullable: false },
+    { name: 'MERCHANT_ID', type: 'CHAR(15)',         nullable: false },
+    { name: 'AUTH_CODE',   type: 'CHAR(6)',          nullable: false },
+    { name: 'RESP_CODE',   type: 'CHAR(2)',          nullable: false },
+  ],
+  'CARD.MERCHANT': [
+    { name: 'MERCHANT_ID', type: 'CHAR(15)',             nullable: false, pk: true },
+    { name: 'MERCHANT_NM', type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+    { name: 'MCC',         type: 'CHAR(4)',              nullable: false },
+    { name: 'COUNTRY_CD',  type: 'CHAR(2)',              nullable: false },
+    { name: 'STATUS_FLG',  type: 'CHAR(1)',              nullable: false },
+  ],
+
+  /* p6 - 총계정원장 */
+  'GL.GL_ACCOUNT': [
+    { name: 'ACCT_CD',   type: 'VARCHAR(10)', nullable: false, pk: true },
+    { name: 'ACCT_NM',   type: 'VARCHAR(60)', nullable: false },
+    { name: 'ACCT_TYPE', type: 'VARCHAR(2)',  nullable: false },
+    { name: 'PARENT_CD', type: 'VARCHAR(10)', nullable: true  },
+    { name: 'STATUS',    type: 'VARCHAR(2)',  nullable: false },
+  ],
+  'GL.GL_JOURNAL': [
+    { name: 'JOURNAL_ID', type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'POSTING_DT', type: 'DATE',         nullable: false },
+    { name: 'ACCT_CD',    type: 'VARCHAR(10)',  nullable: false },
+    { name: 'AMT',        type: 'NUMBER(15,2)', nullable: false },
+    { name: 'DR_CR',      type: 'CHAR(1)',      nullable: false },
+    { name: 'DESCR',      type: 'VARCHAR(120)', nullable: true  },
+  ],
+  'GL.GL_BALANCE': [
+    { name: 'ACCT_CD', type: 'VARCHAR(10)',  nullable: false, pk: true },
+    { name: 'BAL_DT',  type: 'DATE',         nullable: false, pk: true },
+    { name: 'BAL_AMT', type: 'NUMBER(18,2)', nullable: false },
+    { name: 'CCY_CD',  type: 'CHAR(3)',      nullable: false },
+  ],
+
+  /* p7 - 무역금융 */
+  'TRADE.LC_MASTER': [
+    { name: 'LC_NO',       type: 'CHAR(16)',             nullable: false, pk: true },
+    { name: 'ISSUE_DT',    type: 'CHAR(8) YYYYMMDD',     nullable: false },
+    { name: 'EXPIRE_DT',   type: 'CHAR(8) YYYYMMDD',     nullable: false },
+    { name: 'APPLICANT',   type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+    { name: 'BENEFICIARY', type: 'CHAR(40) EBCDIC-KANA', nullable: false },
+    { name: 'AMT',         type: 'COMP-3 S9(13)V99',     nullable: false },
+    { name: 'CCY_CD',      type: 'CHAR(3)',              nullable: false },
+    { name: 'STATUS_FLG',  type: 'CHAR(1)',              nullable: false },
+  ],
+  'TRADE.EXPORT_BILL': [
+    { name: 'BILL_NO',    type: 'CHAR(16)',         nullable: false, pk: true },
+    { name: 'LC_NO',      type: 'CHAR(16)',         nullable: true  },
+    { name: 'ISSUE_DT',   type: 'CHAR(8) YYYYMMDD', nullable: false },
+    { name: 'AMT',        type: 'COMP-3 S9(13)V99', nullable: false },
+    { name: 'CCY_CD',     type: 'CHAR(3)',          nullable: false },
+    { name: 'STATUS_FLG', type: 'CHAR(1)',          nullable: false },
+  ],
+
+  /* p9 - 인터넷뱅킹 */
+  'IB.IB_USER': [
+    { name: 'USER_ID',       type: 'VARCHAR(20)', nullable: false, pk: true },
+    { name: 'CUST_NO',       type: 'VARCHAR(10)', nullable: false },
+    { name: 'LOGIN_ID',      type: 'VARCHAR(30)', nullable: false },
+    { name: 'EMAIL',         type: 'VARCHAR(80)', nullable: true  },
+    { name: 'TEL_NO',        type: 'VARCHAR(15)', nullable: true  },
+    { name: 'STATUS',        type: 'VARCHAR(2)',  nullable: false },
+    { name: 'LAST_LOGIN_TS', type: 'TIMESTAMP',   nullable: true  },
+  ],
+  'IB.IB_SESSION': [
+    { name: 'SESSION_ID', type: 'VARCHAR(40)', nullable: false, pk: true },
+    { name: 'USER_ID',    type: 'VARCHAR(20)', nullable: false },
+    { name: 'TOKEN_HASH', type: 'VARCHAR(64)', nullable: false },
+    { name: 'ISSUED_TS',  type: 'TIMESTAMP',   nullable: false },
+    { name: 'EXPIRE_TS',  type: 'TIMESTAMP',   nullable: false },
+    { name: 'IP_ADDR',    type: 'VARCHAR(45)', nullable: true  },
+  ],
+  'IB.IB_TRANSFER': [
+    { name: 'TRANSFER_ID', type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'FROM_ACCT',   type: 'VARCHAR(20)',  nullable: false },
+    { name: 'TO_ACCT',     type: 'VARCHAR(20)',  nullable: false },
+    { name: 'AMT',         type: 'NUMBER(13,2)', nullable: false },
+    { name: 'CCY_CD',      type: 'CHAR(3)',      nullable: false },
+    { name: 'TRANSFER_TS', type: 'TIMESTAMP',    nullable: false },
+    { name: 'STATUS',      type: 'VARCHAR(2)',   nullable: false },
+  ],
+  'IB.IB_AUDIT': [
+    { name: 'AUDIT_ID',   type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'USER_ID',    type: 'VARCHAR(20)',  nullable: true  },
+    { name: 'EVENT_TYPE', type: 'VARCHAR(20)',  nullable: false },
+    { name: 'EVENT_TS',   type: 'TIMESTAMP',    nullable: false },
+    { name: 'IP_ADDR',    type: 'VARCHAR(45)',  nullable: true  },
+    { name: 'DETAIL',     type: 'VARCHAR(500)', nullable: true  },
+  ],
+
+  /* p10 - 신용평가 */
+  'CREDIT.CREDIT_APPLICATION': [
+    { name: 'APP_ID',      type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'CUST_NO',     type: 'VARCHAR(10)',  nullable: false },
+    { name: 'PROD_CD',     type: 'VARCHAR(8)',   nullable: false },
+    { name: 'REQ_AMT',     type: 'NUMBER(15,2)', nullable: false },
+    { name: 'REQ_DT',      type: 'DATE',         nullable: false },
+    { name: 'PURPOSE_CD',  type: 'VARCHAR(4)',   nullable: false },
+    { name: 'STATUS',      type: 'VARCHAR(2)',   nullable: false },
+  ],
+  'CREDIT.CREDIT_SCORE': [
+    { name: 'SCORE_ID',  type: 'VARCHAR(24)', nullable: false, pk: true },
+    { name: 'CUST_NO',   type: 'VARCHAR(10)', nullable: false },
+    { name: 'SCORE',     type: 'NUMBER(5,1)', nullable: false },
+    { name: 'GRADE',     type: 'CHAR(2)',     nullable: false },
+    { name: 'MODEL_VER', type: 'VARCHAR(8)',  nullable: false },
+    { name: 'CALC_DT',   type: 'DATE',        nullable: false },
+  ],
+  'CREDIT.CREDIT_HISTORY': [
+    { name: 'HIST_ID',    type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'CUST_NO',    type: 'VARCHAR(10)',  nullable: false },
+    { name: 'EVENT_TYPE', type: 'VARCHAR(4)',   nullable: false },
+    { name: 'EVENT_DT',   type: 'DATE',         nullable: false },
+    { name: 'AMT',        type: 'NUMBER(15,2)', nullable: true  },
+    { name: 'INST_CD',    type: 'VARCHAR(6)',   nullable: false },
+    { name: 'NOTE',       type: 'VARCHAR(200)', nullable: true  },
+  ],
+  'CREDIT.CREDIT_DECISION': [
+    { name: 'DEC_ID',       type: 'VARCHAR(24)',  nullable: false, pk: true },
+    { name: 'APP_ID',       type: 'VARCHAR(24)',  nullable: false },
+    { name: 'DECISION',     type: 'CHAR(1)',      nullable: false },
+    { name: 'APPROVED_AMT', type: 'NUMBER(15,2)', nullable: true  },
+    { name: 'REVIEWER',     type: 'VARCHAR(8)',   nullable: false },
+    { name: 'DEC_DT',       type: 'DATE',         nullable: false },
+    { name: 'REASON_CD',    type: 'VARCHAR(4)',   nullable: true  },
   ],
 };
 
@@ -962,7 +2079,7 @@ const getPreflightChecks = (project) => {
    Rows that the pipeline rejected, grouped by reason. Real tool would read
    from a quarantine table/queue populated during run. */
 
-const QUARANTINE_ENTRIES = [
+const QUARANTINE_ENTRIES_P1 = [
   {
     id: 'q-001', stage: 'validate.fk', severity: 'error',
     reason: 'FK violation — child key not found in parent',
@@ -1025,6 +2142,95 @@ const QUARANTINE_ENTRIES = [
     ],
   },
 ];
+
+const QUARANTINE_ENTRIES_P2 = [
+  {
+    id: 'q-p2-001', stage: 'transform', severity: 'warning',
+    reason: 'branch_code 길이 불일치 — left-pad 적용',
+    detail: 'BR_CD CHAR(4) → CHAR(6) · 2,118 rows auto-padded',
+    table: 'DEPOSIT_ACCOUNT', count: 2118, firstSeenAt: '02:48:07.331',
+    sampleRows: [
+      { ACCT_NO: 'D0008811041', BR_CD: '0204', _padded: '000204' },
+      { ACCT_NO: 'D0008811042', BR_CD: '0455', _padded: '000455' },
+    ],
+  },
+];
+
+const QUARANTINE_ENTRIES_P3 = [];
+const QUARANTINE_ENTRIES_P4 = [];
+
+const QUARANTINE_ENTRIES_P5 = [
+  {
+    id: 'q-p5-001', stage: 'validate.fk', severity: 'warning',
+    reason: 'MERCHANT_ID 미등록 — 빈 머천트로 fallback',
+    detail: 'CARD_AUTH_LOG · 12 rows referenced unknown MERCHANT_ID',
+    table: 'CARD_AUTH_LOG', count: 12, firstSeenAt: '02:11:34.331',
+    sampleRows: [
+      { AUTH_ID: 'A000001045', MERCHANT_ID: 'M9999999000123' },
+      { AUTH_ID: 'A000001046', MERCHANT_ID: 'M9999999000124' },
+    ],
+  },
+];
+
+const QUARANTINE_ENTRIES_P6 = [
+  {
+    id: 'q-p6-001', stage: 'validate.constraint', severity: 'warning',
+    reason: 'GL_BALANCE 합계 불일치 — 수동 조정 필요',
+    detail: '특정 부서 잔액이 GL_JOURNAL 합계와 ±0.01 차이',
+    table: 'GL_BALANCE', count: 4, firstSeenAt: '18:42:08.512',
+    sampleRows: [
+      { ACCT_CD: '1101010001', BAL_DT: '2026-02-28', BAL_AMT: 4_881_204_551.23 },
+    ],
+  },
+];
+
+const QUARANTINE_ENTRIES_P7 = [];
+
+const QUARANTINE_ENTRIES_P8 = [];
+
+const QUARANTINE_ENTRIES_P9 = [
+  {
+    id: 'q-p9-001', stage: 'transform', severity: 'info',
+    reason: 'TIMESTAMP → TIMESTAMPTZ 변환 — Asia/Seoul 가정',
+    detail: 'IB_USER.LAST_LOGIN_TS · 4,212,881 rows · 시간대 명시 없음 → KST 추론',
+    table: 'IB_USER', count: 4212881, firstSeenAt: '22:42:24.994',
+    sampleRows: [
+      { USER_ID: 'U00088110', LAST_LOGIN_TS: '2026-05-08 14:22:18' },
+    ],
+  },
+  {
+    id: 'q-p9-002', stage: 'validate.fk', severity: 'warning',
+    reason: '세션 USER_ID 미존재 — 만료된 사용자 제외',
+    detail: 'IB_SESSION.USER_ID → IB_USER.user_id · 442 rows orphaned',
+    table: 'IB_SESSION', count: 442, firstSeenAt: '22:42:31.221',
+    sampleRows: [
+      { SESSION_ID: 'sess-2026-0508-aabbcc', USER_ID: 'U_DELETED_001' },
+    ],
+  },
+];
+
+const QUARANTINE_ENTRIES_P10 = [
+  {
+    id: 'q-p10-001', stage: 'transform', severity: 'info',
+    reason: 'event_type 매핑 — 1글자 코드 → 라벨 변환',
+    detail: 'CREDIT_HISTORY.EVENT_TYPE · 4-char → 12-char 라벨, lookup 적용',
+    table: 'CREDIT_HISTORY', count: 18, firstSeenAt: '10:29:12.118',
+    sampleRows: [
+      { HIST_ID: 'H000001045', EVENT_TYPE: 'DLNQ', _mapped: 'DELINQUENT' },
+    ],
+  },
+];
+
+const QUARANTINE_BY_PROJECT = {
+  p1: QUARANTINE_ENTRIES_P1, p2: QUARANTINE_ENTRIES_P2, p3: QUARANTINE_ENTRIES_P3,
+  p4: QUARANTINE_ENTRIES_P4, p5: QUARANTINE_ENTRIES_P5, p6: QUARANTINE_ENTRIES_P6,
+  p7: QUARANTINE_ENTRIES_P7, p8: QUARANTINE_ENTRIES_P8, p9: QUARANTINE_ENTRIES_P9,
+  p10: QUARANTINE_ENTRIES_P10,
+};
+const getQuarantine = (projectId) => QUARANTINE_BY_PROJECT[projectId] || [];
+
+/* Active QUARANTINE_ENTRIES — re-bound by setActiveDataProject. */
+let QUARANTINE_ENTRIES = QUARANTINE_ENTRIES_P1;
 
 /* ─── Mapping snapshots / versions ───────────────────────────────
    Real tool stores each snapshot's full mapping state. Mock per project. */
@@ -1101,6 +2307,39 @@ const MAPPING_SNAPSHOTS_BY_PROJECT = {
       approvedBy: 'Reviewer', approvedAt: '2026-01-22 13:45', changes: [] },
   ],
   p8: [],
+  p9: [
+    { id: 'p9-v1.0', version: '1.0', createdAt: '2026-04-13 10:00', author: 'Admin',
+      notes: '초기 매핑 스펙 — IB 채널 핵심 5개 도메인', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-15 14:30',
+      changes: [] },
+    { id: 'p9-v1.1', version: '1.1', createdAt: '2026-04-22 09:30', author: 'Admin',
+      notes: '인증·세션 도메인 재매핑, 성능 인덱스 보강', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-23 11:00',
+      changes: [
+        { kind: 'modified', target: 'public.ib_session.token_hash', detail: 'SHA-256 해시 길이 확장' },
+        { kind: 'added',    target: 'public.ib_audit',              detail: '신규 감사 로그 테이블' },
+      ] },
+    { id: 'p9-v1.2', version: '1.2', createdAt: '2026-05-06 16:00', author: 'Admin',
+      notes: '최종 컷오버 직전 — 잔여 경고 0건', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-05-07 09:30',
+      changes: [
+        { kind: 'modified', target: 'public.ib_user.last_login_at', detail: 'TIMESTAMP → TIMESTAMPTZ' },
+        { kind: 'modified', target: 'public.ib_transfer.amount',    detail: 'NUMERIC(13,2) → NUMERIC(15,2) 한도 확장' },
+      ] },
+  ],
+  p10: [
+    { id: 'p10-v0.9', version: '0.9', createdAt: '2026-04-27 11:00', author: 'Admin',
+      notes: '초안 — 신용평가 핵심 도메인 4개 매핑', status: 'approved',
+      approvedBy: 'Reviewer', approvedAt: '2026-04-28 10:30',
+      changes: [] },
+    { id: 'p10-v1.0', version: '1.0', createdAt: '2026-05-06 14:30', author: 'Admin',
+      notes: '리허설 안정화 — CREDIT_DECISION 매핑 검토 중', status: 'pending',
+      reviewer: 'Reviewer',
+      changes: [
+        { kind: 'modified', target: 'public.credit_history.event_type', detail: '4-char 코드 → 12-char 라벨 lookup 추가' },
+        { kind: 'added',    target: 'public.credit_score.created_at',   detail: 'audit 컬럼 신규 · default = now()' },
+      ] },
+  ],
 };
 
 /* Audit log — every mutating event, most recent first. */
@@ -1155,7 +2394,28 @@ const AUDIT_LOG_BY_PROJECT = {
     { at: '2026-01-22 13:45', actor: 'Reviewer', action: 'approved', target: 'v1.0', detail: 'Sign-off' },
   ],
   p8: [
-    { at: 'just now', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "Remittance Hub" created' },
+    { at: 'just now', actor: 'Admin', action: 'created', target: 'Project', detail: 'Project "송금허브" created' },
+  ],
+  p9: [
+    { at: '2026-05-08 22:00', actor: 'Reviewer', action: 'run-start', target: 'cut-2026-0508-2200', detail: 'Cutover initiated · v1.2 snapshot' },
+    { at: '2026-05-07 09:30', actor: 'Reviewer', action: 'approved',  target: 'v1.2', detail: 'Pre-cutover sign-off · 잔여 경고 0건' },
+    { at: '2026-05-06 16:00', actor: 'Admin',    action: 'snapshot',  target: 'v1.2', detail: 'Final pre-cutover snapshot · 2 changes' },
+    { at: '2026-04-23 11:00', actor: 'Reviewer', action: 'approved',  target: 'v1.1', detail: 'Sign-off · 인증·세션 보강 확인' },
+    { at: '2026-04-22 09:30', actor: 'Admin',    action: 'snapshot',  target: 'v1.1', detail: '2 changes since v1.0' },
+    { at: '2026-04-15 14:30', actor: 'Reviewer', action: 'approved',  target: 'v1.0', detail: 'Initial sign-off' },
+    { at: '2026-04-13 10:00', actor: 'Admin',    action: 'snapshot',  target: 'v1.0', detail: '초기 매핑 스펙' },
+    { at: '2026-04-12 14:15', actor: 'Admin',    action: 'imported',  target: 'TO-BE DDL', detail: 'ib-pg15.sql · 52 tables' },
+    { at: '2026-04-12 09:30', actor: 'Admin',    action: 'imported',  target: 'AS-IS DDL', detail: 'ib-db2.sql · 52 tables' },
+    { at: '2026-04-10 11:00', actor: 'Admin',    action: 'created',   target: 'Project',   detail: 'Project "인터넷뱅킹" created' },
+  ],
+  p10: [
+    { at: '2026-05-08 10:15', actor: 'Admin',    action: 'run-start', target: 'run-2026-0508-1015', detail: '리허설 수동 실행 · v1.0 pending 스냅샷' },
+    { at: '2026-05-06 14:30', actor: 'Admin',    action: 'snapshot',  target: 'v1.0', detail: 'CREDIT_DECISION 매핑 검토 중 · 2 changes since v0.9' },
+    { at: '2026-04-28 10:30', actor: 'Reviewer', action: 'approved',  target: 'v0.9', detail: '초안 승인 · 4 도메인 핵심 매핑 OK' },
+    { at: '2026-04-27 11:00', actor: 'Admin',    action: 'snapshot',  target: 'v0.9', detail: '초기 매핑 스펙 · Reviewer 송부' },
+    { at: '2026-04-26 14:20', actor: 'Admin',    action: 'imported',  target: 'TO-BE DDL', detail: 'credit-pg15.sql · 38 tables' },
+    { at: '2026-04-25 10:00', actor: 'Admin',    action: 'imported',  target: 'AS-IS DDL', detail: 'credit-ora12.sql · 38 tables' },
+    { at: '2026-04-24 09:00', actor: 'Admin',    action: 'created',   target: 'Project',   detail: 'Project "신용평가" created' },
   ],
 };
 
@@ -1267,15 +2527,8 @@ const getUnreadCount      = (list) => list.filter(n => !n.read).length;
    currently-active run rendered in Execution tab's header. */
 
 const RUNS_BY_PROJECT = {
-  p1: [
-    { id: 'run-2026-0421-0914', mode: 'rehearsal', startedAt: '2026-04-21 09:14', elapsed: '00:27:06', eta: '00:28:40', result: 'running',  quarantineCount: 6,  triggeredBy: { actor: 'Admin',  source: 'manual' } },
-    { id: 'run-2026-0420-2200', mode: 'rehearsal', startedAt: '2026-04-20 22:00', elapsed: '3h 42m',  result: 'ok',      quarantineCount: 8,  triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
-    { id: 'run-2026-0419-2200', mode: 'rehearsal', startedAt: '2026-04-19 22:00', elapsed: '3h 55m',  result: 'warn',    quarantineCount: 14, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
-    { id: 'run-2026-0418-2200', mode: 'rehearsal', startedAt: '2026-04-18 22:00', elapsed: '4h 12m',  result: 'warn',    quarantineCount: 22, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
-    { id: 'run-2026-0417-2200', mode: 'rehearsal', startedAt: '2026-04-17 22:00', elapsed: '4h 30m',  result: 'aborted', quarantineCount: 0,  triggeredBy: { actor: 'control-m', source: 'nightly schedule' }, error: 'encode · invalid EBCDIC byte halted run' },
-    { id: 'run-2026-0416-1420', mode: 'rehearsal', startedAt: '2026-04-16 14:20', elapsed: '2h 18m',  result: 'ok',      quarantineCount: 28, triggeredBy: { actor: 'Admin',  source: 'manual' } },
-    { id: 'run-2026-0414-2200', mode: 'rehearsal', startedAt: '2026-04-14 22:00', elapsed: '5h 04m',  result: 'warn',    quarantineCount: 48, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
-  ],
+  /* p1 계정원장 — analysis 단계라 아직 run 이력 없음 */
+  p1: [],
   p2: [
     { id: 'run-2026-0423-2200', mode: 'rehearsal', startedAt: '2026-04-23 22:00', elapsed: '2h 50m',  result: 'ok',    quarantineCount: 3, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
     { id: 'run-2026-0422-2200', mode: 'rehearsal', startedAt: '2026-04-22 22:00', elapsed: '2h 58m',  result: 'ok',    quarantineCount: 5, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
@@ -1292,6 +2545,17 @@ const RUNS_BY_PROJECT = {
   p7: [
     { id: 'cut-2026-0202-2200', mode: 'cutover',   startedAt: '2026-02-02 22:00', elapsed: '1h 32m',  result: 'ok',    quarantineCount: 0, triggeredBy: { actor: 'Reviewer',  source: 'manual · cutover' } },
   ],
+  p9: [
+    { id: 'cut-2026-0508-2200', mode: 'cutover',   startedAt: '2026-05-08 22:00', elapsed: '00:42:18', eta: '03:30',  result: 'running', quarantineCount: 0, triggeredBy: { actor: 'Reviewer', source: 'manual · cutover' } },
+    { id: 'run-2026-0507-2200', mode: 'rehearsal', startedAt: '2026-05-07 22:00', elapsed: '3h 22m',   result: 'ok',      quarantineCount: 0, triggeredBy: { actor: 'control-m', source: 'final rehearsal' } },
+    { id: 'run-2026-0506-2200', mode: 'rehearsal', startedAt: '2026-05-06 22:00', elapsed: '3h 18m',   result: 'ok',      quarantineCount: 1, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0505-2200', mode: 'rehearsal', startedAt: '2026-05-05 22:00', elapsed: '3h 24m',   result: 'warn',    quarantineCount: 6, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+  ],
+  p10: [
+    { id: 'run-2026-0508-1015', mode: 'rehearsal', startedAt: '2026-05-08 10:15', elapsed: '00:14:32', eta: '00:18:00', result: 'running', quarantineCount: 0, triggeredBy: { actor: 'Admin', source: 'manual' } },
+    { id: 'run-2026-0507-2200', mode: 'rehearsal', startedAt: '2026-05-07 22:00', elapsed: '2h 18m',   result: 'ok',   quarantineCount: 1, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+    { id: 'run-2026-0506-2200', mode: 'rehearsal', startedAt: '2026-05-06 22:00', elapsed: '2h 22m',   result: 'warn', quarantineCount: 4, triggeredBy: { actor: 'control-m', source: 'nightly schedule' } },
+  ],
   /* p3/p4/p8 are in analysis/planning — no runs yet */
 };
 
@@ -1302,6 +2566,33 @@ const getActiveRun  = (projectId) => {
 };
 const getPhaseLabel = (k) => PHASES.find(p => p.k === k)?.l || k;
 const getPhaseDesc  = (k) => PHASES.find(p => p.k === k)?.desc || '';
+const getPhaseColor = (k) => PHASES.find(p => p.k === k)?.color || 'var(--text-3)';
+const getPhaseBg    = (k) => PHASES.find(p => p.k === k)?.bg    || 'var(--panel-2)';
+
+/* ─── Active project switcher ─────────────────────────────────────
+   Many legacy consumers (mapping.jsx, app.jsx, ExportTab, Artifacts) read
+   from globals like window.SCHEMA_DIFF / window.TABLES / window.LOG_LINES.
+   To preserve that contract while still supporting per-project demo data,
+   we re-bind those globals whenever the active project changes. The module
+   variables are 'let' bindings so reassignment also updates closure reads
+   inside helpers that don't go through window. */
+let ACTIVE_DATA_PROJECT_ID = 'p1';
+const setActiveDataProject = (projectId) => {
+  if (!projectId || !SCHEMA_DIFF_BY_PROJECT[projectId]) return;
+  ACTIVE_DATA_PROJECT_ID = projectId;
+  SCHEMA_DIFF        = SCHEMA_DIFF_BY_PROJECT[projectId];
+  ASIS_SCHEMA_TABLES = ASIS_SCHEMA_TABLES_BY_PROJECT[projectId] || [];
+  TOBE_SCHEMA_TABLES = TOBE_SCHEMA_TABLES_BY_PROJECT[projectId] || [];
+  TABLES             = TABLES_BY_PROJECT[projectId] || [];
+  LOG_LINES          = LOG_LINES_BY_PROJECT[projectId] || [];
+  QUARANTINE_ENTRIES = QUARANTINE_BY_PROJECT[projectId] || [];
+  /* Re-publish on window so consumers reading via window.* see fresh data. */
+  window.SCHEMA_DIFF        = SCHEMA_DIFF;
+  window.TABLES             = TABLES;
+  window.LOG_LINES           = LOG_LINES;
+  window.QUARANTINE_ENTRIES  = QUARANTINE_ENTRIES;
+};
+const getActiveDataProject = () => ACTIVE_DATA_PROJECT_ID;
 
 Object.assign(window, {
   PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT,
@@ -1314,6 +2605,12 @@ Object.assign(window, {
   MAPPING_SNAPSHOTS_BY_PROJECT, AUDIT_LOG_BY_PROJECT,
   getSnapshots, getAuditLog, getLatestApproved, createSnapshot,
   NOTIFICATION_EVENTS, NOTIFICATIONS_SEED, getNotifications, getUnreadCount,
-  PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun, getPhaseLabel, getPhaseDesc,
+  PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun,
+  getPhaseLabel, getPhaseDesc, getPhaseColor, getPhaseBg,
   COLUMN_OVERRIDES, getColumnOverrides, updateColumnOverride,
+  /* Per-project data + helpers */
+  SCHEMA_DIFF_BY_PROJECT, TABLES_BY_PROJECT, LOG_LINES_BY_PROJECT, QUARANTINE_BY_PROJECT,
+  ASIS_SCHEMA_TABLES_BY_PROJECT, TOBE_SCHEMA_TABLES_BY_PROJECT,
+  getSchemaDiffByProject, getTablesByProject, getLogLines, getQuarantine,
+  setActiveDataProject, getActiveDataProject,
 });

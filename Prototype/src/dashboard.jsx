@@ -74,7 +74,6 @@ const Dashboard = ({ project, onTabChange }) => {
       : filter === 'unbound' ? r.readiness === 'unbound'
       : filter === 'review' ? r.readiness === 'review'
       : filter === 'ready' ? r.readiness === 'ready'
-      : filter === 'partial' ? (r.errs > 0 || r.warns > 0 || r.unmapped > 0) && !r.unbound
       : true
     )
     .sort((a, b) => {
@@ -126,7 +125,6 @@ const Dashboard = ({ project, onTabChange }) => {
             ['all', 'All', counts.total],
             ['ready', 'Ready', counts.ready],
             ['review', 'Review', counts.review],
-            ['partial', 'Partial', rows.filter(r => (r.errs > 0 || r.warns > 0) && !r.unbound).length],
             ['unbound', 'Unbound', counts.unbound],
           ].map(([k, l, n], i) => (
             <button key={k} onClick={() => setFilter(k)} style={{

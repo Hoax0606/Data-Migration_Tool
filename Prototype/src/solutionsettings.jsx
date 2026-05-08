@@ -2,9 +2,8 @@
    modal (same pattern as Help/About) for navigation consistency — Settings
    is a single screen, not a tabbed view. */
 
-const SolutionSettings = ({ onClose, theme, setTheme }) => {
+const SolutionSettings = ({ onClose, theme, setTheme, notifEnabled, setNotifEnabled }) => {
   const [lang, setLang] = React.useState('en');
-  const [notif, setNotif] = React.useState({ run: true, error: true });
   /* External integrations are off by default — most deployments use the
      internal scheduler. Toggle on only when the customer's ops team wants
      their existing Control-M / Airflow / Jenkins to trigger runs. */
@@ -16,7 +15,7 @@ const SolutionSettings = ({ onClose, theme, setTheme }) => {
   return (
     <OverlayShell
       title="Solution settings"
-      desc="preferences for ModernizeProData · applies across all sites"
+      desc={<>preferences for <BrandName/> · applies across all sites</>}
       onClose={onClose}
       width={720}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
@@ -46,9 +45,10 @@ const SolutionSettings = ({ onClose, theme, setTheme }) => {
           </SSRow>
         </SSCard>
 
-        <SSCard title="Notifications" desc="When to show in-app toasts and browser push.">
-          <SSRow label="Run completion"><SSToggle on={notif.run} onChange={v => setNotif(n => ({ ...n, run: v }))} label="Notify when a run finishes"/></SSRow>
-          <SSRow label="Errors"><SSToggle on={notif.error} onChange={v => setNotif(n => ({ ...n, error: v }))} label="Notify on migration errors (severity ≥ error)"/></SSRow>
+        <SSCard title="Notifications" desc="인앱 알림(🔔) 사용 여부. 어떤 이벤트를 받을지는 Project Settings › Notifications 에서 관리합니다.">
+          <SSRow label="Enable notifications" hint="끄면 모든 프로젝트의 인앱 알림이 일괄 비활성화됩니다.">
+            <SSToggle on={notifEnabled} onChange={setNotifEnabled} label={notifEnabled ? 'Enabled' : 'Disabled'}/>
+          </SSRow>
         </SSCard>
 
         {/* External integrations — gated by enable toggle */}

@@ -3,12 +3,34 @@
 const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTarget }) => {
   const [tick, setTick] = React.useState(0);
   const [running, setRunning] = React.useState(true);
+  const [bump, setBump] = React.useState(0);
 
   React.useEffect(() => {
     if (!running) return;
     const id = setInterval(() => setTick(t => t + 1), 1200);
     return () => clearInterval(id);
   }, [running]);
+
+  const handleStartRun = (mode) => {
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 16).replace('T', ' ');
+    const idStamp = now.toISOString().slice(0, 10).replace(/-/g, '') + '-' + now.toTimeString().slice(0, 5).replace(':', '');
+    const newRun = {
+      id: `${mode === 'cutover' ? 'cut' : 'run'}-${idStamp}`,
+      mode,
+      startedAt: stamp,
+      elapsed: '00:00:00',
+      eta: mode === 'cutover' ? '03:30' : '02:00',
+      result: 'running',
+      quarantineCount: 0,
+      triggeredBy: { actor: 'Admin', source: `manual · ${mode}` },
+    };
+    const map = window.RUNS_BY_PROJECT || {};
+    if (!map[project.id]) map[project.id] = [];
+    map[project.id].unshift(newRun);
+    setBump(b => b + 1);
+    setRunning(true);
+  };
 
   const s = stages.map(st => ({
     ...st,
@@ -34,7 +56,10 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTa
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
       {/* Run header */}
-      <RunHeader project={project} running={running} onToggleRun={() => setRunning(r => !r)}/>
+      <RunHeader project={project} running={running}
+        onToggleRun={() => setRunning(r => !r)}
+        onStartRun={handleStartRun}
+        bump={bump}/>
 
       {/* Pre-flight checks */}
       <PreflightPanel checks={checks} counts={counts} hasBlocking={hasBlocking} onFix={navigateToFix}/>
@@ -111,7 +136,7 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTa
       {/* Quarantine + workers */}
       <div style={{ display: 'flex', gap: 14, padding: 14, background: 'var(--bg)', flex: 1, minHeight: 260 }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <QuarantineViewer entries={window.QUARANTINE_ENTRIES || []}/>
+          <QuarantineViewer entries={window.getQuarantine?.(project?.id) || []}/>
         </div>
 
         {/* Workers */}
@@ -373,13 +398,20 @@ const QuarantineViewer = ({ entries }) => {
    triggeredBy (scheduler / manual). The internal scheduler is the canonical
    trigger path — external CLI was removed. */
 
-const RunHeader = ({ project, running, onToggleRun }) => {
+const RunHeader = ({ project, running, onToggleRun, onStartRun, bump }) => {
   const run = window.getActiveRun ? window.getActiveRun(project?.id) : null;
   const history = window.getRuns ? window.getRuns(project?.id) : [];
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+
+  /* 매핑 완료 여부 — phase 가 rehearsal 이상이면 활성화 */
+  const phase = project?.phase;
+  const mappingReady = ['rehearsal', 'sign-off', 'cutover', 'hypercare'].includes(phase);
+  const isDone = phase === 'done';
 
   if (!run) {
     const lastRun = history[0];
     return (
+      <>
       <div style={{
         padding: '14px 18px',
         borderBottom: '1px solid var(--border)',
@@ -393,14 +425,31 @@ const RunHeader = ({ project, running, onToggleRun }) => {
               : <>run 이력 없음 — 분석/설계 단계입니다</>}
           </div>
         </div>
+        {!isDone && (
+          <Btn
+            kind={mappingReady ? 'primary' : 'secondary'}
+            size="md"
+            icon={<Ic.play/>}
+            onClick={() => mappingReady && setDialogOpen(true)}
+            title={mappingReady
+              ? '매핑이 완료된 프로젝트 — 모드를 선택해 실행합니다'
+              : '매핑 미완료 — Mapping 탭에서 모든 컬럼 매핑 후 실행 가능'}
+            disabled={!mappingReady}
+          >
+            Start run
+          </Btn>
+        )}
       </div>
+      {dialogOpen && (
+        <StartRunDialog
+          project={project}
+          onClose={() => setDialogOpen(false)}
+          onConfirm={(mode) => { setDialogOpen(false); onStartRun?.(mode); }}
+        />
+      )}
+      </>
     );
   }
-
-  const modeRed = run.mode === 'cutover';
-  const modeBg = modeRed ? 'var(--red-50)' : 'var(--navy-50)';
-  const modeFg = modeRed ? 'var(--red)' : 'var(--navy)';
-  const modeBd = modeRed ? 'var(--red)' : 'var(--navy)';
 
   return (
     <div style={{
@@ -411,13 +460,8 @@ const RunHeader = ({ project, running, onToggleRun }) => {
       position: 'relative',
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>Active run</span>
-          <span style={{
-            padding: '1px 7px', fontSize: 9.5, fontWeight: 700, fontFamily: 'var(--mono)',
-            borderRadius: 3, background: modeBg, color: modeFg, border: `1px solid ${modeBd}`,
-            letterSpacing: 0.4,
-          }}>{run.mode === 'cutover' ? '⚠ CUTOVER' : 'REHEARSAL'}</span>
+        <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>
+          Active run
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 600 }}>{run.id}</span>
@@ -538,5 +582,122 @@ const Kv = ({ k, v, tone }) => (
     <span style={{ color: tone === 'ok' ? 'var(--green)' : 'var(--text)' }}>{v}</span>
   </div>
 );
+
+/* ─── Start run dialog ──────────────────────────────────────────
+   사용자가 모드(REHEARSAL / CUTOVER) 를 명시적으로 선택해 새 run 을 시작.
+   Cutover 는 추가 확인 체크박스 통과 시에만 활성. */
+
+const StartRunDialog = ({ project, onClose, onConfirm }) => {
+  const [mode, setMode] = React.useState('rehearsal');
+  const [confirmCutover, setConfirmCutover] = React.useState(false);
+
+  const isCut = mode === 'cutover';
+  const canConfirm = !isCut || confirmCutover;
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(10,18,16,0.55)',
+      display: 'grid', placeItems: 'center', zIndex: 2000,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: 460, background: 'var(--panel)',
+        border: '1px solid var(--border-strong)', borderRadius: 5,
+        boxShadow: '0 30px 80px rgba(10,20,18,0.35)',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '12px 16px 10px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Start run</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, fontFamily: 'var(--mono)' }}>
+              {project?.name} · {project?.phase}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            width: 22, height: 22, border: '1px solid var(--border)',
+            background: 'var(--panel)', borderRadius: 3, cursor: 'pointer',
+            fontSize: 11, color: 'var(--text-3)',
+          }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '14px 16px 4px' }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+            실행 모드
+          </div>
+          <ModeOption
+            value="rehearsal" current={mode} onSelect={setMode}
+            title="Rehearsal — 리허설"
+            desc="테스트 타겟에 dry-run 으로 적용합니다. 운영 데이터에 영향 없음. 반복 실행 가능."
+            tone="navy"
+          />
+          <ModeOption
+            value="cutover" current={mode} onSelect={setMode}
+            title="⚠ Cutover — 컷오버"
+            desc="운영 타겟에 실제 데이터를 적용합니다. 단방향이며, 한 번 시작하면 완료까지 진행됩니다."
+            tone="red"
+          />
+
+          {isCut && (
+            <div style={{
+              marginTop: 12, padding: 10,
+              border: '1px solid var(--red)', background: 'var(--red-50)',
+              borderRadius: 3, fontSize: 11, color: 'var(--red)', lineHeight: 1.55,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>운영 데이터 변경 확인</div>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', color: 'var(--text-2)' }}>
+                <input type="checkbox" checked={confirmCutover} onChange={e => setConfirmCutover(e.target.checked)}
+                  style={{ marginTop: 2 }}/>
+                <span>승인된 매핑 스냅샷·롤백 절차·D-day 일정을 확인했으며, 본 컷오버를 운영에 적용함을 동의합니다.</span>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{
+          padding: '10px 16px 14px',
+          display: 'flex', gap: 8, justifyContent: 'flex-end',
+        }}>
+          <Btn kind="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+          <Btn
+            kind={isCut ? 'danger' : 'primary'} size="sm"
+            icon={<Ic.play/>}
+            onClick={() => canConfirm && onConfirm(mode)}
+            disabled={!canConfirm}
+          >
+            {isCut ? 'Start cutover' : 'Start rehearsal'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ModeOption = ({ value, current, onSelect, title, desc, tone }) => {
+  const isSelected = current === value;
+  const accent = tone === 'red' ? 'var(--red)' : 'var(--navy)';
+  return (
+    <label onClick={() => onSelect(value)}
+      style={{
+        display: 'flex', gap: 10, alignItems: 'flex-start',
+        padding: '10px 12px',
+        border: `1px solid ${isSelected ? accent : 'var(--border)'}`,
+        background: isSelected ? (tone === 'red' ? 'var(--red-50)' : 'var(--navy-50)') : 'var(--panel)',
+        borderRadius: 4,
+        marginBottom: 6,
+        cursor: 'pointer',
+      }}>
+      <input type="radio" checked={isSelected} onChange={() => onSelect(value)} style={{ marginTop: 3 }}/>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? accent : 'var(--text)' }}>{title}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>{desc}</div>
+      </div>
+    </label>
+  );
+};
 
 window.Execution = Execution;
