@@ -438,7 +438,8 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
     all: mapping.length,
     auto:     mapping.filter(r => r.rule === 'auto').length,
     rule:     mapping.filter(r => r.rule === 'rule').length,
-    added:    mapping.filter(r => r.rule === 'added').length,
+    null:     mapping.filter(r => r.rule === 'null').length,
+    default:  mapping.filter(r => r.rule === 'default').length,
     unmapped: mapping.filter(r => r.rule === 'unmapped').length,
   };
 
@@ -476,7 +477,8 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
           {counts.unmapped > 0 && <StatusBadge tone="queued">{counts.unmapped} unmapped</StatusBadge>}
           {counts.auto > 0 && <StatusBadge tone="ok">{counts.auto} passthrough</StatusBadge>}
           {counts.rule > 0 && <StatusBadge tone="info">{counts.rule} transform</StatusBadge>}
-          {counts.added > 0 && <StatusBadge tone="ok">{counts.added} added</StatusBadge>}
+          {counts.null > 0 && <StatusBadge tone="queued">{counts.null} null</StatusBadge>}
+          {counts.default > 0 && <StatusBadge tone="queued">{counts.default} default</StatusBadge>}
         </div>
       </div>
 
@@ -516,7 +518,7 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
         <div style={{ display: 'flex', height: 26, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', background: 'var(--panel)' }}>
           {[
             ['all','All'], ['unmapped','Unmapped'], ['auto','Passthrough'],
-            ['rule','Transform'], ['added','Added'],
+            ['rule','Transform'], ['null','Null'], ['default','Default'],
           ].map(([k, l], i) => (
             <button key={k} onClick={() => setRuleFilter(k)} style={{
               padding: '0 10px', border: 'none',
