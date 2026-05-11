@@ -2,7 +2,7 @@
    collapsible table-level binding and column-level mapping detail.
    Handles all four DDL states: both / asis-only / tobe-only / neither. */
 
-const Mapping = ({ project, fixTarget, onConsumeFixTarget }) => {
+const Mapping = ({ project, fixTarget, onConsumeFixTarget, onTabChange }) => {
   const hasAsis = !!project?.ddl?.asis;
   const hasTobe = !!project?.ddl?.tobe;
 
@@ -10,12 +10,13 @@ const Mapping = ({ project, fixTarget, onConsumeFixTarget }) => {
     return <GlobalEmpty project={project} which="both"/>;
   }
   return <FullMapping project={project} hasAsis={hasAsis} hasTobe={hasTobe}
-    fixTarget={fixTarget} onConsumeFixTarget={onConsumeFixTarget}/>;
+    fixTarget={fixTarget} onConsumeFixTarget={onConsumeFixTarget}
+    onTabChange={onTabChange}/>;
 };
 
 /* ─── Main dual-pane mapping UI ─────────────────────────────────── */
 
-const FullMapping = ({ project, hasAsis, hasTobe, fixTarget, onConsumeFixTarget }) => {
+const FullMapping = ({ project, hasAsis, hasTobe, fixTarget, onConsumeFixTarget, onTabChange }) => {
   /* bindingsVersion is bumped whenever a SCHEMA_DIFF.sources entry is mutated
      via updateBinding. Every inventory/detail memo re-runs so the sidebar
      badges, CollapsibleBinding, and source-alias tags stay in sync. */
@@ -100,6 +101,7 @@ const FullMapping = ({ project, hasAsis, hasTobe, fixTarget, onConsumeFixTarget 
         selected={sel} onSelect={setSel}
       />
       <MappingWorkspace
+        project={project}
         selected={sel}
         hasAsis={hasAsis} hasTobe={hasTobe}
         onSelect={setSel}
@@ -111,6 +113,7 @@ const FullMapping = ({ project, hasAsis, hasTobe, fixTarget, onConsumeFixTarget 
         updateOverride={updateOverride}
         updateWhereFilter={updateWhereFilter}
         pulseColName={pulseColName}
+        onTabChange={onTabChange}
       />
     </div>
   );
@@ -359,7 +362,7 @@ const InventoryItem = ({ side, table, isSelected, onClick }) => {
 
 /* ─── Right: workspace routes by selection ──────────────────────── */
 
-const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion, overridesVersion, updateOverride, updateWhereFilter, pulseColName }) => {
+const MappingWorkspace = ({ project, selected, hasAsis, hasTobe, onSelect, updateBinding, asisInventory, tobeInventory, bindingsVersion, overridesVersion, updateOverride, updateWhereFilter, pulseColName, onTabChange }) => {
   if (!selected) {
     return <GuidePanel hasAsis={hasAsis} hasTobe={hasTobe}/>;
   }
@@ -369,6 +372,7 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
       return <TobeBindingEmpty tableName={selected.name}/>;
     }
     return <TobeMappingDetail
+      project={project}
       tableName={selected.internalName} displayName={selected.name}
       schema={schema} mapping={resolveMapping(selected)}
       hasAsis={hasAsis}
@@ -377,6 +381,7 @@ const MappingWorkspace = ({ selected, hasAsis, hasTobe, onSelect, updateBinding,
       updateOverride={updateOverride}
       updateWhereFilter={updateWhereFilter}
       pulseColName={pulseColName}
+      onTabChange={onTabChange}
     />;
   }
   /* AS-IS side */
@@ -398,7 +403,7 @@ const resolveMapping = (selected) => {
 
 /* ─── TO-BE detail — existing column mapping grid + collapsible binding ── */
 
-const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory, updateOverride, updateWhereFilter, pulseColName }) => {
+const TobeMappingDetail = ({ project, tableName, displayName, schema, mapping, hasAsis, updateBinding, asisInventory, updateOverride, updateWhereFilter, pulseColName, onTabChange }) => {
   const [q, setQ] = React.useState('');
   const [ruleFilter, setRuleFilter] = React.useState('all');
   const [activeIdx, setActiveIdx] = React.useState(0);
@@ -480,6 +485,37 @@ const TobeMappingDetail = ({ tableName, displayName, schema, mapping, hasAsis, u
           {counts.null > 0 && <StatusBadge tone="queued">{counts.null} null</StatusBadge>}
           {counts.default > 0 && <StatusBadge tone="queued">{counts.default} default</StatusBadge>}
         </div>
+
+        {/* 단일-테이블 시범 이행: 현재 매핑을 그대로 가지고 이 TO-BE 테이블만 rehearsal 로 돌립니다.
+           매핑 수정 → 빠른 검증 루프를 위한 진입점. */}
+        {(() => {
+          const phaseOk = ['rehearsal', 'sign-off', 'cutover', 'hypercare'].includes(project?.phase);
+          const activeRun = project ? window.getActiveRun?.(project.id) : null;
+          const blocked = !!activeRun;
+          const canRun = phaseOk && !blocked && counts.unmapped === 0;
+          const tip = !phaseOk ? '리허설 단계 이상에서만 시범 이행 가능'
+                    : blocked ? `활성 run 진행 중 (${activeRun.id})`
+                    : counts.unmapped > 0 ? '미매핑 컬럼이 있습니다 — 먼저 매핑을 완료하세요'
+                    : `${displayName || tableName} 테이블만 시범 이행 (rehearsal)`;
+          return (
+            <Btn kind="primary" size="sm" icon={<Ic.play/>}
+              disabled={!canRun}
+              title={tip}
+              onClick={() => {
+                if (!canRun) return;
+                if (!confirm(`${displayName || tableName} 테이블만 rehearsal 모드로 시범 이행합니다.\n계속하시겠습니까?`)) return;
+                window.startPartialRun?.(project.id, {
+                  mode: 'rehearsal',
+                  scope: 'single',
+                  tables: [tableName],
+                  triggeredBy: { actor: 'Admin', source: 'manual · mapping · single' },
+                });
+                onTabChange?.('execution');
+              }}>
+              이 테이블만 시범 이행
+            </Btn>
+          );
+        })()}
       </div>
 
       {/* Collapsible table-level binding */}

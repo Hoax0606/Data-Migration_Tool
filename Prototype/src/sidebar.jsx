@@ -268,20 +268,30 @@ const Sidebar = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 1 }}>
                     {(() => {
                       /* Active-run indicator — 진행 중인 run 이 있을 때만 점이 켜진다.
-                         색은 그 run 의 mode 에 따라 cutover=빨강, rehearsal=주황. */
+                         색은 그 run 의 mode 에 따라 cutover=빨강, rehearsal=주황.
+                         부분 run 인 경우 (scope !== 'all') 점 옆에 ·N 카운트 배지. */
                       const ar = window.getActiveRun?.(p.id);
                       if (!ar) {
                         /* 자리 차지용 투명 placeholder — 정렬 유지 */
                         return <span style={{ width: 7, height: 7, flexShrink: 0 }}/>;
                       }
                       const c = ar.mode === 'cutover' ? '#F87171' : '#FB923C';
+                      const partial = ar.scope && ar.scope !== 'all';
+                      const tableCount = Array.isArray(ar.tables) ? ar.tables.length : 0;
                       return (
-                        <span title={`${ar.mode} run 진행 중 · ${ar.id}`} style={{
-                          width: 7, height: 7, borderRadius: '50%',
-                          background: c,
-                          boxShadow: `0 0 0 2px ${c}33`,
-                          flexShrink: 0,
-                        }}/>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                          <span title={`${ar.mode} run 진행 중 · ${ar.id}${partial ? ` · ${ar.scopeLabel || ar.scope}` : ''}`} style={{
+                            width: 7, height: 7, borderRadius: '50%',
+                            background: c,
+                            boxShadow: `0 0 0 2px ${c}33`,
+                          }}/>
+                          {partial && (
+                            <span style={{
+                              fontSize: 9, fontFamily: 'var(--mono)', color: c,
+                              letterSpacing: 0.2,
+                            }}>·{tableCount}</span>
+                          )}
+                        </span>
                       );
                     })()}
                     <span style={{

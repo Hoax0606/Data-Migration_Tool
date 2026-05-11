@@ -11,23 +11,11 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTa
     return () => clearInterval(id);
   }, [running]);
 
-  const handleStartRun = (mode) => {
-    const now = new Date();
-    const stamp = now.toISOString().slice(0, 16).replace('T', ' ');
-    const idStamp = now.toISOString().slice(0, 10).replace(/-/g, '') + '-' + now.toTimeString().slice(0, 5).replace(':', '');
-    const newRun = {
-      id: `${mode === 'cutover' ? 'cut' : 'run'}-${idStamp}`,
-      mode,
-      startedAt: stamp,
-      elapsed: '00:00:00',
-      eta: mode === 'cutover' ? '03:30' : '02:00',
-      result: 'running',
-      quarantineCount: 0,
-      triggeredBy: { actor: 'Admin', source: `manual · ${mode}` },
-    };
-    const map = window.RUNS_BY_PROJECT || {};
-    if (!map[project.id]) map[project.id] = [];
-    map[project.id].unshift(newRun);
+  const handleStartRun = (mode, scopeOpts = {}) => {
+    const { scope = 'all', tables, parentRunId, triggeredBy } = scopeOpts;
+    if (typeof window.startPartialRun === 'function') {
+      window.startPartialRun(project.id, { mode, scope, tables, parentRunId, triggeredBy });
+    }
     setBump(b => b + 1);
     setRunning(true);
   };
@@ -51,6 +39,34 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTa
     if (fix.section && onSettingsSection) onSettingsSection(fix.section);
     if (fix.target && onSetFixTarget) onSetFixTarget(fix.target);
     onTabChange(fix.tab);
+  };
+
+  /* Quarantine reason 카드 → Mapping 탭 점프. sampleRows[0] 첫 키를
+     컬럼 앵커 fallback 으로 사용. mapping.jsx 는 fixTarget.colName 이 있으면
+     pulseColName 으로 해당 컬럼을 짧게 강조한다. */
+  const handleJumpToMapping = (entry) => {
+    if (!entry || !onTabChange) return;
+    const colName = Object.keys(entry.sampleRows?.[0] || {})[0];
+    if (onSetFixTarget) onSetFixTarget({
+      side: 'tobe',
+      tobeName: entry.table,
+      internalName: entry.table,
+      colName,
+      highlight: 'quarantine',
+    });
+    onTabChange('mapping');
+  };
+
+  /* Quarantine reason 카드 → "이 테이블만 다시 이행". 활성 run 진행 중이면
+     무시 (버튼은 비활성 상태). 항상 rehearsal mode 로 시범 이행. */
+  const handleQuarantineRequeueTable = (entry) => {
+    if (!entry?.table) return;
+    if (window.getActiveRun?.(project.id)) return;
+    handleStartRun('rehearsal', {
+      scope: 'single',
+      tables: [entry.table],
+      triggeredBy: { actor: 'Admin', source: 'manual · quarantine · single' },
+    });
   };
 
   return (
@@ -136,7 +152,11 @@ const Execution = ({ stages, project, onTabChange, onSettingsSection, onSetFixTa
       {/* Quarantine + workers */}
       <div style={{ display: 'flex', gap: 14, padding: 14, background: 'var(--bg)', flex: 1, minHeight: 260 }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <QuarantineViewer entries={window.getQuarantine?.(project?.id) || []}/>
+          <QuarantineViewer
+            entries={window.getQuarantine?.(project?.id) || []}
+            projectId={project?.id}
+            onTriggerPartialRun={handleQuarantineRequeueTable}
+            onJumpToMapping={handleJumpToMapping}/>
         </div>
 
         {/* Workers */}
@@ -247,9 +267,10 @@ const PreflightPanel = ({ checks, counts, hasBlocking, onFix }) => {
    and take action (requeue / discard / export — placeholder alerts for
    the prototype). */
 
-const QuarantineViewer = ({ entries }) => {
+const QuarantineViewer = ({ entries, projectId, onTriggerPartialRun, onJumpToMapping }) => {
   const [filter, setFilter] = React.useState('all'); // all | error | warning
   const [expanded, setExpanded] = React.useState(new Set([entries[0]?.id]));
+  const blocked = !!(projectId && window.getActiveRun?.(projectId)); /* 활성 run 동시성 가드 */
 
   const filtered = entries.filter(e => filter === 'all' || e.severity === filter);
   const total = entries.reduce((a, e) => a + e.count, 0);
@@ -376,10 +397,21 @@ const QuarantineViewer = ({ entries }) => {
                       </tbody>
                     </table>
                   </div>
-                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                    <Btn kind="primary" size="sm" onClick={() => alert(`v1: ${e.count} rows을 파이프라인에 다시 넣습니다.`)}>Requeue {e.count} rows</Btn>
-                    <Btn kind="secondary" size="sm" onClick={() => alert(`v1: ${e.count} rows을 영구 제거합니다. 감사 로그에 기록.`)}>Discard</Btn>
-                    <Btn kind="secondary" size="sm" icon={<Ic.download/>} onClick={() => alert(`v1: ${e.table}_quarantine_${e.id}.csv 다운로드.`)}>Export CSV</Btn>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <Btn kind="primary" size="sm"
+                      onClick={() => onTriggerPartialRun?.(e)}
+                      disabled={blocked || !e.table}
+                      title={blocked ? '활성 run 진행 중 — 종료 후 재시도' : (e.table ? `${e.table} 테이블만 시범 이행` : '대상 테이블 미상')}>
+                      이 테이블만 다시 이행
+                    </Btn>
+                    <Btn kind="secondary" size="sm"
+                      onClick={() => onJumpToMapping?.(e)}
+                      title="해당 TO-BE 테이블 매핑 화면으로 이동 (관련 컬럼 강조)">
+                      매핑 열기
+                    </Btn>
+                    <Btn kind="ghost" size="sm" onClick={() => alert(`v1: ${e.count} rows을 파이프라인에 다시 넣습니다.`)}>Requeue {e.count} rows</Btn>
+                    <Btn kind="ghost" size="sm" onClick={() => alert(`v1: ${e.count} rows을 영구 제거합니다. 감사 로그에 기록.`)}>Discard</Btn>
+                    <Btn kind="ghost" size="sm" icon={<Ic.download/>} onClick={() => alert(`v1: ${e.table}_quarantine_${e.id}.csv 다운로드.`)}>Export CSV</Btn>
                     <div style={{ flex: 1 }}/>
                     <Btn kind="ghost" size="sm" onClick={() => alert('v1: 해당 테이블의 행 인스펙터를 엽니다 (full row data).')}>Open row inspector</Btn>
                   </div>
@@ -421,7 +453,9 @@ const RunHeader = ({ project, running, onToggleRun, onStartRun, bump }) => {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>No active run</div>
           <div style={{ fontSize: 12, color: 'var(--text-2)', fontFamily: 'var(--mono)' }}>
-            {lastRun ? <>last run: <b>{lastRun.id}</b> · {lastRun.startedAt} · {lastRun.result}</>
+            {lastRun ? <>last run: <b>{lastRun.id}</b> · {lastRun.startedAt} · {lastRun.result}
+              {(lastRun.scope && lastRun.scope !== 'all') && <span style={{ color: 'var(--text-3)' }}> · {lastRun.scopeLabel || lastRun.scope}</span>}
+            </>
               : <>run 이력 없음 — 분석/설계 단계입니다</>}
           </div>
         </div>
@@ -444,7 +478,7 @@ const RunHeader = ({ project, running, onToggleRun, onStartRun, bump }) => {
         <StartRunDialog
           project={project}
           onClose={() => setDialogOpen(false)}
-          onConfirm={(mode) => { setDialogOpen(false); onStartRun?.(mode); }}
+          onConfirm={(mode, scopeOpts) => { setDialogOpen(false); onStartRun?.(mode, scopeOpts); }}
         />
       )}
       </>
@@ -466,6 +500,9 @@ const RunHeader = ({ project, running, onToggleRun, onStartRun, bump }) => {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'var(--mono)', fontSize: 16, fontWeight: 600 }}>{run.id}</span>
           <StatusBadge tone={running ? 'running' : 'warn'}>{running ? 'running' : 'paused'}</StatusBadge>
+          {(run.scope && run.scope !== 'all') && (
+            <StatusBadge tone="info">{run.scopeLabel || run.scope}</StatusBadge>
+          )}
           <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>
             started {run.startedAt.split(' ')[1] || run.startedAt} · elapsed {run.elapsed}{run.eta ? ` · eta ${run.eta}` : ''}
           </span>
@@ -552,6 +589,15 @@ const RunHistory = ({ project }) => {
                         color: modeBd, border: `1px solid ${modeBd}`,
                         letterSpacing: 0.4, textTransform: 'uppercase',
                       }}>{r.mode}</span>
+                      {(r.scope && r.scope !== 'all') && (
+                        <span style={{
+                          marginLeft: 4,
+                          fontSize: 9.5, fontFamily: 'var(--mono)',
+                          padding: '1px 5px', borderRadius: 2,
+                          background: 'var(--panel-2)', color: 'var(--text-3)',
+                          border: '1px solid var(--border)',
+                        }}>{r.scopeLabel || r.scope}</span>
+                      )}
                     </td>
                     <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', color: 'var(--text-2)' }}>{r.startedAt}</td>
                     <td style={{ padding: '5px 10px', fontFamily: 'var(--mono)', color: 'var(--text-3)' }}>{r.elapsed || '—'}</td>
@@ -589,10 +635,46 @@ const Kv = ({ k, v, tone }) => (
 
 const StartRunDialog = ({ project, onClose, onConfirm }) => {
   const [mode, setMode] = React.useState('rehearsal');
+  const [scope, setScope] = React.useState('all');
   const [confirmCutover, setConfirmCutover] = React.useState(false);
 
   const isCut = mode === 'cutover';
-  const canConfirm = !isCut || confirmCutover;
+
+  /* 트리거 시점의 실패 테이블을 스냅샷 — run 시작 직후 status 가 running 으로
+     변하기 전에 캡처. dialog 열려있는 동안에는 dialogue 가 한 번 계산한 값을 유지. */
+  const failedSnapshot = React.useMemo(() => {
+    if (isCut) {
+      return window.getTablesFromLastFailedCutover?.(project?.id) || [];
+    }
+    return window.getFailedTables?.(project?.id) || [];
+  }, [project?.id, isCut]);
+
+  const failedCount = failedSnapshot.length;
+  const failedDisabled = failedCount === 0;
+
+  /* Cutover + failed-only 만 partial cutover 정책에서 허용. 그 외 mode/scope 조합
+     은 canStartPartial 로 검증. 'all' 은 항상 허용 (legacy 경로). */
+  const partialOk = scope === 'all' ||
+    (window.canStartPartial ? window.canStartPartial(project, mode, scope) : true);
+
+  /* failed-only 선택했는데 실패 카운트가 0 이면 자동으로 all 로 되돌림 */
+  React.useEffect(() => {
+    if (scope === 'failed-only' && failedDisabled) setScope('all');
+  }, [scope, failedDisabled]);
+
+  const canConfirm = partialOk && (!isCut || confirmCutover);
+
+  const handleSubmit = () => {
+    if (!canConfirm) return;
+    const scopeOpts = scope === 'all'
+      ? { scope: 'all' }
+      : {
+          scope,
+          tables: failedSnapshot.slice(),
+          triggeredBy: { actor: 'Admin', source: `manual · ${mode} · ${scope}` },
+        };
+    onConfirm(mode, scopeOpts);
+  };
 
   return (
     <div onClick={onClose} style={{
@@ -641,6 +723,31 @@ const StartRunDialog = ({ project, onClose, onConfirm }) => {
             tone="red"
           />
 
+          {/* ─── 실행 범위 ─── */}
+          <div style={{ marginTop: 14, fontSize: 10.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+            실행 범위
+          </div>
+          <ScopeOption
+            value="all" current={scope} onSelect={setScope}
+            title="전체 테이블"
+            desc={isCut
+              ? '운영 cutover 의 기본 옵션 — 모든 매핑 대상 테이블을 한 번에 적용합니다.'
+              : '프로젝트의 모든 매핑 대상 테이블을 실행합니다.'}
+            disabled={false}
+          />
+          <ScopeOption
+            value="failed-only" current={scope} onSelect={setScope}
+            title={`실패한 테이블만 (${failedCount})`}
+            desc={isCut
+              ? (failedDisabled
+                  ? '직전 cutover 에 실패한 테이블이 없습니다 — 부분 cutover 재이행 대상 없음.'
+                  : '직전 cutover 에서 실패한 테이블만 동일 운영 타겟에 재적용합니다.')
+              : (failedDisabled
+                  ? '현재 status 가 warn/blocked 인 테이블이 없습니다.'
+                  : 'status 가 warn/blocked 인 테이블만 시범 이행합니다.')}
+            disabled={failedDisabled}
+          />
+
           {isCut && (
             <div style={{
               marginTop: 12, padding: 10,
@@ -666,14 +773,39 @@ const StartRunDialog = ({ project, onClose, onConfirm }) => {
           <Btn
             kind={isCut ? 'danger' : 'primary'} size="sm"
             icon={<Ic.play/>}
-            onClick={() => canConfirm && onConfirm(mode)}
+            onClick={handleSubmit}
             disabled={!canConfirm}
           >
             {isCut ? 'Start cutover' : 'Start rehearsal'}
+            {scope !== 'all' && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.85 }}>· {scope === 'failed-only' ? `실패만 (${failedCount})` : scope}</span>}
           </Btn>
         </div>
       </div>
     </div>
+  );
+};
+
+const ScopeOption = ({ value, current, onSelect, title, desc, disabled }) => {
+  const isSelected = current === value;
+  const accent = 'var(--navy)';
+  return (
+    <label onClick={() => !disabled && onSelect(value)}
+      style={{
+        display: 'flex', gap: 10, alignItems: 'flex-start',
+        padding: '8px 12px',
+        border: `1px solid ${isSelected ? accent : 'var(--border)'}`,
+        background: isSelected ? 'var(--navy-50)' : 'var(--panel)',
+        borderRadius: 4,
+        marginBottom: 6,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}>
+      <input type="radio" checked={isSelected} disabled={disabled} onChange={() => !disabled && onSelect(value)} style={{ marginTop: 3 }}/>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? accent : 'var(--text)' }}>{title}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.5 }}>{desc}</div>
+      </div>
+    </label>
   );
 };
 

@@ -416,7 +416,7 @@ const App = () => {
             ? <EmptyProject project={project} tab={tab}/>
             : <>
                 {tab === 'dashboard' && <Dashboard project={project} onTabChange={setTab}/>}
-                {tab === 'mapping'   && <Mapping project={project} fixTarget={fixTarget} onConsumeFixTarget={() => setFixTarget(null)}/>}
+                {tab === 'mapping'   && <Mapping project={project} fixTarget={fixTarget} onConsumeFixTarget={() => setFixTarget(null)} onTabChange={setTab}/>}
                 {tab === 'versions'  && <Versions project={project}/>}
                 {tab === 'execution' && <Execution stages={STAGES} project={project}
                     onTabChange={setTab}

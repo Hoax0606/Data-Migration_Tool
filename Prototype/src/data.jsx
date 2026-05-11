@@ -2713,6 +2713,83 @@ const setActiveDataProject = (projectId) => {
 };
 const getActiveDataProject = () => ACTIVE_DATA_PROJECT_ID;
 
+/* ─── Partial-run helpers ─────────────────────────────────────────
+   "Failed" 정의: TABLES[i].status ∈ {'warn','blocked'} (status 기반).
+   Quarantine viewer · Start Run dialog · Mapping inspector 세 진입점이
+   동일 helper 를 통해 RUNS_BY_PROJECT 에 run record 를 push.
+   Legacy seed runs 는 scope 필드가 없으므로 렌더 측에서 (run.scope || 'all') 로 처리. */
+
+const getFailedTables = (projectId) => {
+  const tbls = TABLES_BY_PROJECT[projectId] || [];
+  return tbls.filter(t => t.status === 'warn' || t.status === 'blocked').map(t => t.name);
+};
+
+const getLastRunByMode = (projectId, mode) => {
+  const runs = getRuns(projectId);
+  return runs.find(r => r.mode === mode && r.result !== 'running') || null;
+};
+
+const getTablesFromLastFailedCutover = (projectId) => {
+  const cut = getLastRunByMode(projectId, 'cutover');
+  if (!cut || cut.result === 'ok') return [];
+  return getFailedTables(projectId);
+};
+
+const getQuarantineTables = (projectId) => {
+  const entries = QUARANTINE_BY_PROJECT[projectId] || [];
+  return [...new Set(entries.map(e => e.table).filter(Boolean))];
+};
+
+const PARTIAL_PHASES = ['rehearsal', 'sign-off', 'cutover', 'hypercare'];
+
+const canStartPartial = (project, mode, scope) => {
+  if (!project) return false;
+  if (!PARTIAL_PHASES.includes(project.phase)) return false;
+  if (mode === 'cutover') {
+    if (scope !== 'failed-only') return false; /* 임의 subset cutover 차단 */
+    if (!['cutover', 'hypercare'].includes(project.phase)) return false;
+    return getTablesFromLastFailedCutover(project.id).length > 0;
+  }
+  return true; /* rehearsal partial: phase rehearsal+ 에서 자유 */
+};
+
+const buildScopeLabel = (scope, tables) => {
+  if (!scope || scope === 'all') return '전체';
+  const n = Array.isArray(tables) ? tables.length : 0;
+  if (scope === 'single')      return `단일 · ${tables?.[0] || ''}`;
+  if (scope === 'failed-only') return `실패만 · ${n} tables`;
+  return `${scope} · ${n} tables`;
+};
+
+const startPartialRun = (projectId, opts = {}) => {
+  const { mode = 'rehearsal', tables, scope = 'all', parentRunId, triggeredBy } = opts;
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 16).replace('T', ' ');
+  const idStamp = now.toISOString().slice(0, 10).replace(/-/g, '') + '-' + now.toTimeString().slice(0, 5).replace(':', '');
+  const prefix = mode === 'cutover' ? 'cut' : 'run';
+  const eta = mode === 'cutover' ? '03:30' : '02:00';
+  const tableList = scope === 'all' ? 'all' : (Array.isArray(tables) ? tables.slice() : []);
+  const newRun = {
+    id: `${prefix}-${idStamp}`,
+    mode,
+    startedAt: stamp,
+    elapsed: '00:00:00',
+    eta,
+    result: 'running',
+    quarantineCount: 0,
+    tables: tableList,
+    scope,
+    scopeLabel: buildScopeLabel(scope, Array.isArray(tableList) ? tableList : null),
+    parentRunId: parentRunId || null,
+    triggeredBy: triggeredBy || { actor: 'Admin', source: `manual · ${mode}${scope !== 'all' ? ` · ${scope}` : ''}` },
+  };
+  const map = window.RUNS_BY_PROJECT || RUNS_BY_PROJECT;
+  if (!map[projectId]) map[projectId] = [];
+  map[projectId].unshift(newRun);
+  window.RUNS_VERSION = (window.RUNS_VERSION || 0) + 1;
+  return newRun;
+};
+
 Object.assign(window, {
   PROJECTS, TABLES, MAPPING, STAGES, LOG_LINES, SCHEMA_DIFF, TENANT,
   mappingsFromSchemaDiff, getColumnMappings, getSchemaDiff,
@@ -2726,6 +2803,9 @@ Object.assign(window, {
   NOTIFICATION_EVENTS, NOTIFICATIONS_SEED, getNotifications, getUnreadCount,
   PHASES, RUNS_BY_PROJECT, getRuns, getActiveRun,
   getPhaseLabel, getPhaseDesc, getPhaseColor, getPhaseBg,
+  /* Partial-run helpers */
+  getFailedTables, getLastRunByMode, getTablesFromLastFailedCutover,
+  getQuarantineTables, canStartPartial, buildScopeLabel, startPartialRun,
   COLUMN_OVERRIDES, getColumnOverrides, updateColumnOverride,
   /* Per-project data + helpers */
   SCHEMA_DIFF_BY_PROJECT, TABLES_BY_PROJECT, LOG_LINES_BY_PROJECT, QUARANTINE_BY_PROJECT,
