@@ -20,13 +20,28 @@ desktop.ini
 *.bak
 *~
 
-# ── Node / 빌드 산출물 (혹시 추후 도입 시 대비) ─────────────────────
+# ── Node / 빌드 산출물 ──────────────────────────────────────────────
 node_modules/
 dist/
 build/
 .cache/
 .parcel-cache/
 .next/
+
+# ── Maven / Java 빌드 산출물 ────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+.factorypath
+HELP.md
+
+# ── Spring Boot ─────────────────────────────────────────────────────
+spring-shell.log
+application-local.properties
+application-local.yml
 
 # ── Editor / IDE ────────────────────────────────────────────────────
 .vscode/
