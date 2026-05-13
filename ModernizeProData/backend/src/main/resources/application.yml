@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: modernize-pro-data
+
+  # ── 메타 DB (Coordinator 가 보관하는 매핑·사용자·audit log 등) ─────────
+  # 개발: H2 file-mode (재시작 후에도 데이터 유지)
+  # 운영: H2 file-mode 또는 SQLite (단일 노드, 외부 DB 의존성 없음)
+  datasource:
+    url: jdbc:h2:file:./data/meta;AUTO_SERVER=TRUE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # ── Quartz 스케줄러 ──────────────────────────────────────────────────
+  quartz:
+    job-store-type: memory
+    properties:
+      org.quartz.threadPool.threadCount: 5
+
+  # 기본 자동 사용자 생성 비활성 (JWT 직접 처리)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+# ── 서버 설정 ───────────────────────────────────────────────────────────
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+# ── ModernizeProData 자체 설정 ──────────────────────────────────────────
+modernize:
+  # 도구 동작 모드: coordinator | worker
+  mode: coordinator
+
+  # JWT
+  jwt:
+    secret: change-me-in-production-this-must-be-at-least-256-bits-long
+    expiration-hours: 8
+
+  # CORS (개발 시 Vite dev server 허용)
+  cors:
+    allowed-origins: http://localhost:5173,http://localhost:8080
+
+  # Coordinator 정보 (Worker 모드일 때 사용)
+  coordinator:
+    url: http://localhost:8080
+
+  # DuckDB
+  duckdb:
+    memory-mode: true # false 면 파일 모드
+    file-path: ./data/duckdb.db
+
+# ── 로깅 ────────────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.ksinfo.modernize_pro_data: DEBUG
+    org.springframework.security: INFO
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"

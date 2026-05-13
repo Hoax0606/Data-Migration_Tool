@@ -1,0 +1,57 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+export type Theme = 'light' | 'dark';
+export type Language = 'ko' | 'ja' | 'en';
+
+export interface ExternalConfig {
+  scheduler: string;
+  cliPath: string;
+  apiEndpoint: string;
+  apiToken: string;
+  syslog: string;
+}
+
+interface SettingsState {
+  theme: Theme;
+  language: Language;
+  notifications: boolean;
+  externalIntegrations: boolean;
+  externalConfig: ExternalConfig;
+
+  setTheme: (theme: Theme) => void;
+  setLanguage: (language: Language) => void;
+  setNotifications: (on: boolean) => void;
+  setExternalIntegrations: (on: boolean) => void;
+  setExternalConfig: (config: Partial<ExternalConfig>) => void;
+}
+
+/**
+ * Solution settings 의 모든 값 — localStorage 에 영속.
+ * 첫 화면 진입 시 theme/language 가 자동 적용.
+ */
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      theme: 'light',
+      language: 'ko',
+      notifications: true,
+      externalIntegrations: false,
+      externalConfig: {
+        scheduler: 'Control-M',
+        cliPath: '/opt/modernize/bin/modernize',
+        apiEndpoint: 'https://modernize.kdb.internal/api/v1/runs',
+        apiToken: 'mig_****************_a9f3',
+        syslog: 'syslog.kdb.internal:514 · facility local4',
+      },
+
+      setTheme: (theme) => set({ theme }),
+      setLanguage: (language) => set({ language }),
+      setNotifications: (on) => set({ notifications: on }),
+      setExternalIntegrations: (on) => set({ externalIntegrations: on }),
+      setExternalConfig: (config) =>
+        set((s) => ({ externalConfig: { ...s.externalConfig, ...config } })),
+    }),
+    { name: 'modernize-settings' },
+  ),
+);

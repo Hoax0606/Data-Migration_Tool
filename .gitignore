@@ -43,6 +43,14 @@ spring-shell.log
 application-local.properties
 application-local.yml
 
+# ── 런타임 데이터 (메타 DB·DuckDB 파일 등) ──────────────────────────
+ModernizeProData/backend/data/
+ModernizeProData/**/data/
+*.db
+*.db.lock
+*.db.mv.db
+*.trace.db
+
 # ── Editor / IDE ────────────────────────────────────────────────────
 .vscode/
 .idea/
