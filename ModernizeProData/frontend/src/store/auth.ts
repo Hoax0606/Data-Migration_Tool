@@ -8,6 +8,19 @@ export interface AuthUser {
   role: UserRole;
 }
 
+/**
+ * 역할 표시명 — 도구 용어와 통일.
+ * master → Coordinator (전체 운영·승인 권한)
+ * admin  → Worker (실행·매핑 작업)
+ * viewer → Viewer (조회만)
+ */
+export function roleLabel(role: UserRole | undefined | null): string {
+  if (role === 'master') return 'Coordinator';
+  if (role === 'admin')  return 'Worker';
+  if (role === 'viewer') return 'Viewer';
+  return '—';
+}
+
 interface AuthState {
   token: string | null;
   user: AuthUser | null;

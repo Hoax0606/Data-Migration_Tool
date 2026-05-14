@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
+import { ApiError } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { BrandName } from '../components/BrandName';
+import { useT } from '../i18n';
 
 export function LoginPage() {
+  const t = useT();
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [username, setUsername] = useState('');
@@ -21,7 +24,13 @@ export function LoginPage() {
       setAuth(res.token, { username: res.username, role: res.role }, res.expiresAt);
       navigate('/');
     } catch (err) {
-      setError((err as Error).message ?? '로그인 실패');
+      if (err instanceof ApiError) {
+        if (err.code === 'AUTH_USER_NOT_FOUND')         setError(t('login.error.userNotFound'));
+        else if (err.code === 'AUTH_PASSWORD_INVALID')  setError(t('login.error.invalidPassword'));
+        else                                            setError(err.message || t('login.error'));
+      } else {
+        setError((err as Error).message ?? t('login.error'));
+      }
     } finally {
       setLoading(false);
     }
@@ -39,7 +48,7 @@ export function LoginPage() {
         {/* 로그인 카드 */}
         <form style={styles.card} onSubmit={handleSubmit}>
           <label style={styles.label}>
-            <span style={styles.labelText}>Username</span>
+            <span style={styles.labelText}>{t('login.username')}</span>
             <input
               type="text"
               value={username}
@@ -52,7 +61,7 @@ export function LoginPage() {
           </label>
 
           <label style={styles.label}>
-            <span style={styles.labelText}>Password</span>
+            <span style={styles.labelText}>{t('login.password')}</span>
             <input
               type="password"
               value={password}
@@ -70,12 +79,12 @@ export function LoginPage() {
             disabled={loading}
             style={{ ...styles.button, ...(loading ? styles.buttonDisabled : {}) }}
           >
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? t('login.loading') : t('login.submit')}
           </button>
 
           <div style={styles.hint}>
-            개발용: <code style={styles.code}>master</code> / <code style={styles.code}>admin</code> / <code style={styles.code}>viewer</code>
-            &nbsp;·&nbsp; 비번 <code style={styles.code}>password</code>
+            {t('login.devHint.role')}: <code style={styles.code}>master</code> / <code style={styles.code}>admin</code> / <code style={styles.code}>viewer</code>
+            &nbsp;·&nbsp; {t('login.devHint.password')} <code style={styles.code}>password</code>
           </div>
         </form>
 

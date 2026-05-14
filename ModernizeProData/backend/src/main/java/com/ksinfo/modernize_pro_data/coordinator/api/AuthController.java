@@ -44,15 +44,16 @@ public class AuthController {
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
         // TODO: 실제 사용자 DB 조회 + BCrypt 검증 + JWT 발급
         // 현재는 placeholder: master / admin / viewer 만 하드코딩
+        // 주의: 아이디/비번 구분 메시지는 account enumeration 위험 — 실제 운영 전 통합 메시지로 변경 검토.
         String role = switch (req.username()) {
             case "master" -> "master";
             case "admin"  -> "admin";
             case "viewer" -> "viewer";
-            default -> throw new ApiException("AUTH_INVALID", "잘못된 계정", HttpStatus.UNAUTHORIZED);
+            default -> throw new ApiException("AUTH_USER_NOT_FOUND", "존재하지 않는 사용자", HttpStatus.UNAUTHORIZED);
         };
 
         if (!"password".equals(req.password())) {
-            throw new ApiException("AUTH_INVALID", "잘못된 비밀번호", HttpStatus.UNAUTHORIZED);
+            throw new ApiException("AUTH_PASSWORD_INVALID", "비밀번호가 일치하지 않습니다", HttpStatus.UNAUTHORIZED);
         }
 
         log.info("Login: {} ({})", req.username(), role);

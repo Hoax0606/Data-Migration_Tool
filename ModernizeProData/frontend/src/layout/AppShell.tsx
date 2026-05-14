@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/auth';
+import { useAuthStore, roleLabel } from '../store/auth';
 import { BrandName } from '../components/BrandName';
 import { AboutModal } from '../components/AboutModal';
 import { HelpModal } from '../components/HelpModal';
 import { AccountProfileModal } from '../components/AccountProfileModal';
 import { SolutionSettingsModal } from '../components/SolutionSettingsModal';
+import { SiteSettingsModal } from '../components/SiteSettingsModal';
+import { CreateSiteModal } from '../components/CreateSiteModal';
+import { CreateProjectModal } from '../components/CreateProjectModal';
+import { SignOutModal } from '../components/SignOutModal';
+import { ClusterAdminModal } from '../components/ClusterAdminModal';
+import { useWorkspaceStore } from '../store/workspace';
+import { useT } from '../i18n';
 
 /**
  * Prototype 의 메인 셸 (사이드바 + 탑바 + 탭바) 을 그대로 구현.
@@ -13,6 +20,7 @@ import { SolutionSettingsModal } from '../components/SolutionSettingsModal';
  */
 export function AppShell() {
   const navigate = useNavigate();
+  const t = useT();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -21,7 +29,28 @@ export function AppShell() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [solutionOpen, setSolutionOpen] = useState(false);
+  const [createSiteOpen, setCreateSiteOpen] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [clusterAdminOpen, setClusterAdminOpen] = useState(false);
+  const [siteSettingsOpen, setSiteSettingsOpen] = useState(false);
+  const [siteMenuOpen, setSiteMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
+  const siteRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  /* Workspace state — 원시 상태만 구독하고 derived 는 useMemo (re-render 무한 루프 방지) */
+  const sites = useWorkspaceStore((s) => s.sites);
+  const allProjects = useWorkspaceStore((s) => s.projects);
+  const activeSiteId = useWorkspaceStore((s) => s.activeSiteId);
+  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
+  const setActiveProject = useWorkspaceStore((s) => s.setActiveProject);
+  const setActiveSite = useWorkspaceStore((s) => s.setActiveSite);
+
+  const activeSite = useMemo(() => sites.find((s) => s.id === activeSiteId) ?? null, [sites, activeSiteId]);
+  const activeProject = useMemo(() => allProjects.find((p) => p.id === activeProjectId) ?? null, [allProjects, activeProjectId]);
+  const projects = useMemo(() => allProjects.filter((p) => p.siteId === activeSiteId), [allProjects, activeSiteId]);
 
   useEffect(() => {
     if (!userOpen) return;
@@ -31,6 +60,24 @@ export function AppShell() {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [userOpen]);
+
+  useEffect(() => {
+    if (!siteMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!siteRef.current?.contains(e.target as Node)) setSiteMenuOpen(false);
+    };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [siteMenuOpen]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!notifRef.current?.contains(e.target as Node)) setNotifOpen(false);
+    };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [notifOpen]);
 
   const handleLogout = () => {
     logout();
@@ -48,23 +95,87 @@ export function AppShell() {
           </div>
 
           {/* 사이트 selector */}
-          <div style={styles.siteRow}>
-            <div style={styles.siteBadge}>KS</div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={styles.siteName}>KS Info System</div>
-              <div style={styles.siteSub}>on-prem · 1 site</div>
-            </div>
-            <span style={styles.siteChevron}>▼</span>
+          <div ref={siteRef} style={{ position: 'relative' }}>
+            {activeSite ? (
+              <div
+                style={{ ...styles.siteRow, ...(siteMenuOpen ? styles.siteRowOpen : {}) }}
+                onClick={(e) => { e.stopPropagation(); setSiteMenuOpen((o) => !o); }}
+              >
+                <div style={styles.siteBadge}>{siteBadge(activeSite.name)}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={styles.siteName}>{activeSite.name}</div>
+                  <div style={styles.siteSub}>{activeSite.asisEnv} → {activeSite.tobeEnv} · {sites.length} {sites.length === 1 ? t('shell.siteCountSuffix') : t('shell.siteCountSuffixPlural')}</div>
+                </div>
+                <span style={{ ...styles.siteChevron, transform: siteMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▼</span>
+              </div>
+            ) : (
+              <div style={styles.siteRowEmpty} onClick={() => setCreateSiteOpen(true)}>
+                <div style={styles.siteBadgeEmpty}>+</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={styles.siteNameEmpty}>{t('shell.siteEmpty.name')}</div>
+                  <div style={styles.siteSubEmpty}>{t('shell.siteEmpty.sub')}</div>
+                </div>
+              </div>
+            )}
+
+            {/* 사이트 드롭다운 메뉴 */}
+            {siteMenuOpen && activeSite && (
+              <div style={styles.siteMenu} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.siteMenuHeader}>{t('shell.sites')}</div>
+                {sites.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => { setActiveSite(s.id); setSiteMenuOpen(false); }}
+                    style={{
+                      ...styles.siteMenuItem,
+                      ...(s.id === activeSite.id ? styles.siteMenuItemActive : {}),
+                    }}
+                  >
+                    <div style={styles.siteMenuItemBadge}>{siteBadge(s.name)}</div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={styles.siteMenuItemName}>{s.name}</div>
+                      <div style={styles.siteMenuItemSub}>{s.asisEnv} → {s.tobeEnv}</div>
+                    </div>
+                    {s.id === activeSite.id && <span style={styles.siteMenuCheck}>✓</span>}
+                  </button>
+                ))}
+                <div style={styles.siteMenuDivider} />
+                <button
+                  onClick={() => { setSiteMenuOpen(false); setCreateSiteOpen(true); }}
+                  style={{ ...styles.siteMenuAction, color: 'var(--navy)' }}
+                >
+                  <span style={{ ...styles.siteMenuActionIcon, color: 'var(--navy)' }}>+</span>
+                  {t('shell.menu.newSite')}
+                </button>
+                <button
+                  onClick={() => { setSiteMenuOpen(false); setSiteSettingsOpen(true); }}
+                  style={styles.siteMenuAction}
+                >
+                  <span style={styles.siteMenuActionIcon}>
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="7" cy="7" r="2.2" />
+                      <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.5 2.5l1.1 1.1M10.4 10.4l1.1 1.1M2.5 11.5l1.1-1.1M10.4 3.6l1.1-1.1" />
+                    </svg>
+                  </span>
+                  {t('shell.menu.siteSettings')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Search */}
           <div style={styles.searchWrap}>
-            <span style={styles.searchIcon}>🔍</span>
-            <input style={styles.searchInput} placeholder="Search projects..." />
+            <span style={styles.searchIcon}>
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="var(--navy)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="6" cy="6" r="4.2" />
+                <line x1="9.2" y1="9.2" x2="12" y2="12" />
+              </svg>
+            </span>
+            <input style={styles.searchInput} placeholder={t('shell.searchPlaceholder')} />
           </div>
 
           {/* All projects */}
-          <div style={styles.allProjects}>
+          <div style={styles.allProjects} onClick={() => { setActiveProject(null); navigate('/'); }}>
             <div style={styles.allProjectsIcon}>
               <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
                 <rect x="0" y="0" width="4" height="4" />
@@ -73,21 +184,54 @@ export function AppShell() {
                 <rect x="6" y="6" width="4" height="4" />
               </svg>
             </div>
-            <span style={styles.allProjectsLabel}>All projects</span>
+            <span style={styles.allProjectsLabel}>{t('shell.allProjects')}</span>
             <div style={{ flex: 1 }} />
-            <span style={styles.countMono}>0</span>
+            <span style={styles.countMono}>{projects.length}</span>
           </div>
 
           {/* Projects section */}
           <div style={styles.sectionHeader}>
-            <span>Projects <span style={styles.muted}>0</span></span>
-            <button title="New project" style={styles.iconBtn}>+</button>
+            <span>{t('shell.projects')} <span style={styles.muted}>{projects.length}</span></span>
+            <button
+              title={activeSite ? t('shell.newProject.title') : t('shell.newProject.noSite')}
+              onClick={() => activeSite && setCreateProjectOpen(true)}
+              disabled={!activeSite}
+              style={{ ...styles.iconBtn, opacity: activeSite ? 1 : 0.4 }}
+            >+</button>
           </div>
 
           <div style={styles.projectList}>
-            <div style={styles.emptyState}>
-              No projects yet. Click <code style={styles.kbd}>+</code> above to create one.
-            </div>
+            {projects.length === 0 ? (
+              <div style={styles.emptyState}>
+                {activeSite
+                  ? <>{t('shell.projectsEmpty.withSite.before')}<code style={styles.kbd}>+</code>{t('shell.projectsEmpty.withSite.after')}</>
+                  : <>{t('shell.projectsEmpty.noSite')}</>}
+              </div>
+            ) : (
+              projects.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => setActiveProject(p.id)}
+                  style={{
+                    ...styles.projectRow,
+                    ...(activeProject?.id === p.id ? styles.projectRowActive : {}),
+                  }}
+                >
+                  <div style={styles.projectName}>{p.name}</div>
+                  <div style={styles.projectMeta}>
+                    {(() => {
+                      const c = phaseColors(p.phase);
+                      return (
+                        <span style={{ ...styles.phaseBadge, background: c.bg, color: c.color, borderColor: c.border }}>
+                          {p.phase}
+                        </span>
+                      );
+                    })()}
+                    <span style={styles.projectMetaDim}>{p.tableCount} tables</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* 사용자 메뉴 (하단) */}
@@ -96,36 +240,43 @@ export function AppShell() {
               <div style={styles.userMenu}>
                 <div style={styles.userMenuHeader}>
                   <div style={styles.userMenuName}>{user?.username}</div>
-                  <div style={styles.userMenuSub}>local account · {user?.role}</div>
+                  <div style={styles.userMenuSub}>{roleLabel(user?.role)}</div>
                 </div>
                 <MenuItem
                   icon={<IconProfile />}
-                  label="Account profile"
+                  label={t('menu.accountProfile')}
                   onClick={() => { setUserOpen(false); setProfileOpen(true); }}
                 />
-                {user?.role === 'master' && (
+                {(user?.role === 'master' || user?.role === 'admin') && (
                   <MenuItem
                     icon={<IconGear />}
-                    label="Solution settings"
+                    label={t('menu.solutionSettings')}
                     onClick={() => { setUserOpen(false); setSolutionOpen(true); }}
+                  />
+                )}
+                {user?.role === 'master' && (
+                  <MenuItem
+                    icon={<IconUsers />}
+                    label={t('menu.clusterAdmin')}
+                    onClick={() => { setUserOpen(false); setClusterAdminOpen(true); }}
                   />
                 )}
                 <div style={styles.userMenuDivider} />
                 <MenuItem
                   icon={<IconHelp />}
-                  label="Help & shortcuts"
+                  label={t('menu.help')}
                   onClick={() => { setUserOpen(false); setHelpOpen(true); }}
                 />
                 <MenuItem
                   icon={<IconAbout />}
-                  label={<>About <BrandName /></>}
+                  label={<>{t('menu.about')} <BrandName /></>}
                   onClick={() => { setUserOpen(false); setAboutOpen(true); }}
                 />
                 <div style={styles.userMenuDivider} />
                 <MenuItem
                   icon={<IconSignout />}
-                  label="Sign out"
-                  onClick={() => { setUserOpen(false); handleLogout(); }}
+                  label={t('menu.signout')}
+                  onClick={() => { setUserOpen(false); setSignOutOpen(true); }}
                 />
               </div>
             )}
@@ -159,27 +310,91 @@ export function AppShell() {
           </button>
 
           <div style={styles.topTitle}>
-            <div style={styles.topTitleMain}>
-              <BrandName />
-            </div>
-            <div style={styles.topTitleSub}>
-              데이터 이행 도구 · Coordinator
-            </div>
+            {activeProject ? (
+              <>
+                <div style={styles.topTitleMain}>
+                  {activeProject.name}
+                  {(() => {
+                    const c = phaseColors(activeProject.phase);
+                    return (
+                      <span style={{ ...styles.phaseBadgeTop, background: c.bg, color: c.color, borderColor: c.border }}>
+                        {activeProject.phase}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div style={styles.topTitleSub}>
+                  {activeProject.tableCount} tables
+                </div>
+              </>
+            ) : activeSite ? (
+              <div style={styles.topTitleMain}>{t('shell.allProjects')}</div>
+            ) : (
+              <>
+                <div style={styles.topTitleMain}><BrandName /></div>
+                <div style={styles.topTitleSub}>
+                  {t('shell.top.noSite')}
+                </div>
+              </>
+            )}
           </div>
 
           <div style={{ flex: 1 }} />
 
-          {/* 알림 bell */}
-          <button title="Notifications" style={styles.bellBtn}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
-              <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
-            </svg>
-          </button>
+          {/* 알림 bell + popover */}
+          <div ref={notifRef} style={{ position: 'relative' }}>
+            <button
+              title={t('notifications.title')}
+              onClick={(e) => { e.stopPropagation(); setNotifOpen((o) => !o); }}
+              style={{ ...styles.bellBtn, ...(notifOpen ? styles.bellBtnActive : {}) }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
+                <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
+              </svg>
+            </button>
+            {notifOpen && (() => {
+              // 데이터 연결 전까지는 항상 빈 상태 → 액션 비활성
+              const notifCount = 0;
+              const hasUnread = false;
+              return (
+                <div style={styles.notifPanel} onClick={(e) => e.stopPropagation()}>
+                  <div style={styles.notifHeader}>
+                    <span style={styles.notifHeaderTitle}>{t('notifications.title')}</span>
+                    <div style={styles.notifHeaderActions}>
+                      <button
+                        type="button"
+                        disabled={!hasUnread}
+                        style={{ ...styles.notifAction, ...(hasUnread ? {} : styles.notifActionDisabled) }}
+                      >
+                        {t('notifications.markAllRead')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={notifCount === 0}
+                        style={{ ...styles.notifAction, ...(notifCount > 0 ? {} : styles.notifActionDisabled) }}
+                      >
+                        {t('notifications.clearAll')}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={styles.notifEmpty}>
+                    <div style={styles.notifEmptyIcon}>
+                      <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                        <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
+                        <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
+                      </svg>
+                    </div>
+                    <div style={styles.notifEmptyTitle}>{t('notifications.empty.title')}</div>
+                    <div style={styles.notifEmptyHint}>{t('notifications.empty.hint')}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
 
           {/* AS-IS / TO-BE 인디케이터 (placeholder) */}
           <button title="AS-IS status (placeholder)" style={styles.statusPill}>
-            <span style={{ ...styles.dot, background: 'var(--text-4)' }} />
             <span style={{ ...styles.dot, background: 'var(--text-4)' }} />
             <span>AS-IS</span>
           </button>
@@ -189,16 +404,27 @@ export function AppShell() {
           </button>
         </div>
 
-        {/* 탭바 */}
-        <div style={styles.tabbar}>
-          <Tab to="/" end label="Dashboard" />
-          <Tab to="/mapping" label="Mapping" />
-          <Tab to="/versions" label="Versions" />
-          <Tab to="/execution" label="Execution" />
-          <Tab to="/artifacts" label="Artifacts" />
-          <Tab to="/logs" label="Log viewer" />
-          <Tab to="/settings" label="Settings" gear />
-        </div>
+        {/* 탭바 — 사이트만 있고 프로젝트 없을 땐 site tab, 프로젝트 활성 시 project tab */}
+        {activeSite && activeProject && (
+          <div style={styles.tabbar}>
+            <Tab to="/" end label={t('tab.dashboard')} />
+            <Tab to="/mapping" label={t('tab.mapping')} />
+            <Tab to="/versions" label={t('tab.versions')} />
+            <Tab to="/execution" label={t('tab.execution')} />
+            <Tab to="/artifacts" label={t('tab.artifacts')} />
+            <Tab to="/logs" label={t('tab.logs')} />
+            <Tab to="/settings" label={t('tab.settings')} />
+          </div>
+        )}
+        {activeSite && !activeProject && projects.length > 0 && (
+          <div style={styles.tabbar}>
+            <Tab to="/" end label={t('tab.siteOverview')} />
+            <Tab to="/site/execution" label={t('tab.executionOverview')} />
+            <Tab to="/site/approvals" label={t('tab.approvals')} />
+            <Tab to="/site/export" label={t('tab.siteExport')} />
+            <Tab to="/site/audit" label={t('tab.auditLog')} />
+          </div>
+        )}
 
         <div style={styles.content}>
           <Outlet />
@@ -209,8 +435,41 @@ export function AppShell() {
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <AccountProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       <SolutionSettingsModal open={solutionOpen} onClose={() => setSolutionOpen(false)} />
+      <SiteSettingsModal open={siteSettingsOpen} onClose={() => setSiteSettingsOpen(false)} />
+      <ClusterAdminModal open={clusterAdminOpen} onClose={() => setClusterAdminOpen(false)} />
+      <CreateSiteModal open={createSiteOpen} onClose={() => setCreateSiteOpen(false)} />
+      <CreateProjectModal open={createProjectOpen} onClose={() => setCreateProjectOpen(false)} />
+      <SignOutModal
+        open={signOutOpen}
+        onCancel={() => setSignOutOpen(false)}
+        onConfirm={() => { setSignOutOpen(false); handleLogout(); }}
+      />
     </div>
   );
+}
+
+/** 사이트 이름을 2-3 자 모노그램으로 — 예: "KS Info System" → "KIS" */
+function siteBadge(name: string): string {
+  return name.split(/\s+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase() || '?';
+}
+
+/** phase 별 의미색 (badge bg / border / text). 사이드바·탑바 phase badge 공통. */
+function phaseColors(phase: string): { bg: string; color: string; border: string } {
+  const map: Record<string, string> = {
+    'planning':  'planning',
+    'analysis':  'analysis',
+    'rehearsal': 'rehearsal',
+    'sign-off':  'signoff',
+    'cutover':   'cutover',
+    'hypercare': 'hypercare',
+    'done':      'done',
+  };
+  const slug = map[phase] ?? 'done';
+  return {
+    bg:     `var(--phase-${slug}-50)`,
+    color:  `var(--phase-${slug})`,
+    border: `var(--phase-${slug})`,
+  };
 }
 
 function MenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: React.ReactNode; onClick: () => void }) {
@@ -244,6 +503,16 @@ function IconGear() {
     </svg>
   );
 }
+function IconUsers() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--navy)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="4.5" r="2" />
+      <path d="M1 12c0-2 1.8-3.5 4-3.5s4 1.5 4 3.5" />
+      <circle cx="10.2" cy="5" r="1.6" />
+      <path d="M9 11.8c.2-1.6 1.5-2.6 3-2.6 1 0 1.8.4 1.8.4" />
+    </svg>
+  );
+}
 function IconHelp() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--text-2)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -270,7 +539,7 @@ function IconSignout() {
   );
 }
 
-function Tab({ to, end, label, gear }: { to: string; end?: boolean; label: string; gear?: boolean }) {
+function Tab({ to, end, label }: { to: string; end?: boolean; label: string }) {
   return (
     <NavLink
       to={to}
@@ -293,7 +562,6 @@ function Tab({ to, end, label, gear }: { to: string; end?: boolean; label: strin
       })}
     >
       {label}
-      {gear && <span style={{ fontSize: 10, color: 'var(--text-4)' }}>⚙</span>}
     </NavLink>
   );
 }
@@ -366,6 +634,178 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'var(--mono)',
   },
   siteChevron: { color: 'var(--text-3)', fontSize: 9 },
+  siteRowOpen: { background: 'var(--navy-50)' },
+
+  /* 사이트 드롭다운 메뉴 */
+  siteMenu: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    top: '100%',
+    marginTop: 2,
+    background: 'var(--panel)',
+    border: '1px solid var(--border)',
+    borderRadius: 4,
+    boxShadow: '0 8px 24px rgba(20,30,50,.12)',
+    zIndex: 500,
+    padding: '4px 0',
+  },
+  siteMenuHeader: {
+    padding: '6px 12px',
+    fontSize: 10,
+    color: 'var(--text-3)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontWeight: 600,
+  },
+  siteMenuItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '6px 10px',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  siteMenuItemActive: { background: 'var(--navy-50)' },
+  siteMenuItemBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 3,
+    background: 'var(--navy)',
+    color: '#fff',
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 8,
+    fontFamily: 'var(--mono)',
+    fontWeight: 700,
+    letterSpacing: 0.4,
+    flexShrink: 0,
+  },
+  siteMenuItemName: {
+    fontSize: 11.5,
+    fontWeight: 600,
+    color: 'var(--text)',
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  siteMenuItemSub: { fontSize: 9.5, color: 'var(--text-3)', fontFamily: 'var(--mono)' },
+  siteMenuCheck: { color: 'var(--navy)', fontSize: 11, marginLeft: 4 },
+  siteMenuDivider: { height: 1, margin: '4px 0', background: 'var(--border)' },
+  siteMenuAction: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '7px 12px',
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--text)',
+    fontSize: 11.5,
+    fontWeight: 500,
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  siteMenuActionIcon: {
+    width: 14,
+    color: 'var(--text-3)',
+    fontSize: 14,
+    fontWeight: 700,
+    display: 'inline-flex',
+    justifyContent: 'center',
+  },
+
+  /* 사이트 없을 때 */
+  siteRowEmpty: {
+    padding: '8px 12px',
+    background: 'var(--navy-50)',
+    borderBottom: '1px solid var(--border)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    transition: 'background .08s',
+  },
+  siteBadgeEmpty: {
+    width: 22,
+    height: 22,
+    borderRadius: 3,
+    background: 'var(--navy)',
+    color: '#fff',
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 14,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
+  siteNameEmpty: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--navy)',
+  },
+  siteSubEmpty: {
+    fontSize: 10,
+    color: 'var(--navy)',
+    opacity: 0.7,
+    fontFamily: 'var(--mono)',
+  },
+
+  /* 프로젝트 row */
+  projectRow: {
+    padding: '6px 10px',
+    margin: '1px 0',
+    borderRadius: 3,
+    cursor: 'pointer',
+    border: '1px solid transparent',
+  },
+  projectRowActive: {
+    background: 'var(--navy-50)',
+    borderColor: 'var(--border-strong)',
+  },
+  projectName: {
+    fontSize: 11.5,
+    fontWeight: 500,
+    color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  projectMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  projectMetaDim: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)' },
+  phaseBadge: {
+    padding: '1px 5px',
+    fontSize: 9,
+    fontWeight: 700,
+    fontFamily: 'var(--mono)',
+    background: 'var(--panel-2)',
+    color: 'var(--text-2)',
+    border: '1px solid var(--border)',
+    borderRadius: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  phaseBadgeTop: {
+    marginLeft: 8,
+    padding: '1px 7px',
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: 'var(--mono)',
+    background: 'var(--navy-50)',
+    color: 'var(--navy)',
+    border: '1px solid var(--navy)',
+    borderRadius: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
 
   searchWrap: {
     padding: '8px 10px',
@@ -377,8 +817,9 @@ const styles: Record<string, React.CSSProperties> = {
     left: 18,
     top: '50%',
     transform: 'translateY(-50%)',
-    fontSize: 11,
-    color: 'var(--text-4)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     pointerEvents: 'none',
   },
   searchInput: {
@@ -599,6 +1040,78 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 0,
+  },
+  bellBtnActive: {
+    background: 'var(--panel-2)',
+    borderColor: 'var(--border)',
+    color: 'var(--navy)',
+  },
+  notifPanel: {
+    position: 'absolute',
+    right: 0,
+    top: '100%',
+    marginTop: 6,
+    width: 320,
+    background: 'var(--panel)',
+    border: '1px solid var(--border)',
+    borderRadius: 5,
+    boxShadow: '0 8px 24px rgba(20,30,50,.12)',
+    zIndex: 500,
+    overflow: 'hidden',
+  },
+  notifHeader: {
+    padding: '6px 10px 6px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderBottom: '1px solid var(--border)',
+    background: 'var(--panel-2)',
+  },
+  notifHeaderTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: 'var(--text)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  notifHeaderActions: { display: 'flex', gap: 4 },
+  notifAction: {
+    padding: '3px 8px',
+    fontSize: 10.5,
+    border: '1px solid var(--border-strong)',
+    background: 'var(--panel)',
+    color: 'var(--text-2)',
+    borderRadius: 3,
+    cursor: 'pointer',
+    fontFamily: 'var(--sans)',
+  },
+  notifActionDisabled: { opacity: 0.5, cursor: 'not-allowed' },
+  notifEmpty: {
+    padding: '28px 16px',
+    textAlign: 'center',
+  },
+  notifEmptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    background: 'var(--panel-2)',
+    color: 'var(--text-4)',
+    display: 'inline-grid',
+    placeItems: 'center',
+    marginBottom: 10,
+  },
+  notifEmptyTitle: {
+    fontSize: 12.5,
+    fontWeight: 600,
+    color: 'var(--text-3)',
+    marginBottom: 4,
+  },
+  notifEmptyHint: {
+    fontSize: 11,
+    color: 'var(--text-4)',
+    fontFamily: 'var(--mono)',
+    lineHeight: 1.5,
   },
   statusPill: {
     display: 'inline-flex',

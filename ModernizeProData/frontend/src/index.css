@@ -22,6 +22,23 @@
   --red-50: #fce6e6;
   --gray: #678b86;
   --gray-50: #f2f4f3;
+
+  /* phase colors */
+  --phase-planning:    #7c5dbf;  /* 연보라 */
+  --phase-planning-50: #ede8f5;
+  --phase-analysis:    #2d92c7;  /* 하늘색 */
+  --phase-analysis-50: #e1f0f7;
+  --phase-rehearsal:    #d96e1c; /* 주황색 */
+  --phase-rehearsal-50: #fdebd4;
+  --phase-signoff:      #b8961a; /* 노랑색 */
+  --phase-signoff-50:   #fbf3d4;
+  --phase-cutover:      #c42f2f; /* 빨강색 */
+  --phase-cutover-50:   #fce6e6;
+  --phase-hypercare:    #65a020; /* 연두색 */
+  --phase-hypercare-50: #ecf6dc;
+  --phase-done:         #678b86; /* 회색 */
+  --phase-done-50:      #f2f4f3;
+
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: 'Inter', -apple-system, system-ui, sans-serif;
 }
@@ -48,6 +65,22 @@
   --red-50: #261212;
   --gray: #607d79;
   --gray-50: #1a2724;
+
+  /* phase colors (dark) */
+  --phase-planning:    #b59edd;
+  --phase-planning-50: #211a32;
+  --phase-analysis:    #6abbe0;
+  --phase-analysis-50: #0f2530;
+  --phase-rehearsal:    #f0934a;
+  --phase-rehearsal-50: #2d1c0e;
+  --phase-signoff:      #e0c050;
+  --phase-signoff-50:   #2a2310;
+  --phase-cutover:      #e06060;
+  --phase-cutover-50:   #261212;
+  --phase-hypercare:    #9bd750;
+  --phase-hypercare-50: #1a2810;
+  --phase-done:         #8aa5a0;
+  --phase-done-50:      #1a2724;
 }
 
 * { box-sizing: border-box; }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
-import { useAuthStore } from '../store/auth';
+import { useAuthStore, roleLabel } from '../store/auth';
+import { useT } from '../i18n';
 
 interface Props {
   open: boolean;
@@ -9,9 +10,9 @@ interface Props {
 
 /**
  * Account profile 모달 — 현재 로그인한 사용자의 로컬 계정 정보.
- * Site settings 와 별개 (사용자 단위).
  */
 export function AccountProfileModal({ open, onClose }: Props) {
+  const t = useT();
   const user = useAuthStore((s) => s.user);
   const [pwOpen, setPwOpen] = useState(false);
 
@@ -20,68 +21,57 @@ export function AccountProfileModal({ open, onClose }: Props) {
   const sessionStart = 'since 2026-05-13 09:42';
   const lastPwChange = '2026-04-01';
 
-  const roleLabel = user?.role === 'master' ? 'Master (full access)'
-    : user?.role === 'admin'  ? 'Admin (project access)'
-    : 'Viewer (read-only)';
+  const role = roleLabel(user?.role);
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      width={520}
-      title={
-        <div>
-          <div>Account profile</div>
-          <div style={styles.subtitle}>Local account details. No external directory.</div>
-        </div>
-      }
-    >
+    <Modal open={open} onClose={onClose} width={520} title={t('account.title')}>
       {/* 사용자 행 */}
       <div style={styles.userRow}>
         <div style={styles.avatar}>{user?.username?.[0]?.toUpperCase() ?? '?'}</div>
         <div>
           <div style={styles.name}>{user?.username}</div>
-          <div style={styles.userSub}>{user?.role}</div>
         </div>
       </div>
 
       <div style={styles.divider} />
 
       {/* 필드 */}
-      <Field label="Username" value={user?.username ?? '—'} mono />
-      <Field label="Role" value={roleLabel} mono />
-      <Field label="Last sign-in" value={lastSignIn} mono />
-      <Field label="Active session" value={sessionStart} mono />
+      <Field label={t('account.username')} value={user?.username ?? '—'} mono />
+      <Field label={t('account.role')} value={role} mono />
+      <Field label={t('account.lastSignIn')} value={lastSignIn} mono />
+      <Field label={t('account.activeSession')} value={sessionStart} mono />
 
-      {/* Change password */}
-      <button
-        onClick={() => setPwOpen((o) => !o)}
-        style={styles.collapseBtn}
-      >
-        <div>
-          <div style={styles.collapseTitle}>Change password</div>
-          <div style={styles.collapseSub}>Last changed {lastPwChange}</div>
-        </div>
-        <span style={{ color: 'var(--text-3)', fontSize: 10 }}>{pwOpen ? '▴' : '▾'}</span>
-      </button>
-
-      {pwOpen && (
-        <div style={styles.pwForm}>
-          <div style={styles.pwNotImpl}>
-            ⚠ 미구현 (UI placeholder) — 백엔드 사용자 모듈 완성 후 연결됩니다.
+      {/* Password 섹션 — 명확한 라벨 + 버튼 */}
+      <div style={styles.pwSection}>
+        <div style={styles.pwHeader}>
+          <div>
+            <div style={styles.pwTitle}>{t('account.passwordLabel')}</div>
+            <div style={styles.pwMeta}>{t('account.lastChanged')} · {lastPwChange}</div>
           </div>
-          <FormField label="Current password" type="password" />
-          <FormField label="New password" type="password" />
-          <FormField label="Confirm new password" type="password" />
-          <div style={styles.pwActions}>
-            <button style={styles.btnGhost} onClick={() => setPwOpen(false)}>Cancel</button>
-            <button style={styles.btnPrimary} disabled title="미구현">Save</button>
-          </div>
+          {!pwOpen ? (
+            <button onClick={() => setPwOpen(true)} style={styles.pwBtn}>
+              {t('account.changePassword')}
+            </button>
+          ) : (
+            <button onClick={() => setPwOpen(false)} style={styles.pwBtnGhost}>
+              {t('common.cancel')}
+            </button>
+          )}
         </div>
-      )}
 
-      <div style={styles.note}>
-        To add more local users, go to <b>Site settings → Access</b>.
+        {pwOpen && (
+          <div style={styles.pwForm}>
+            <div style={styles.pwNotImpl}>
+              {t('account.notImpl')}
+            </div>
+            <FormField label={t('account.currentPw')} type="password" />
+            <FormField label={t('account.newPw')} type="password" />
+            <FormField label={t('account.confirmPw')} type="password" />
+            <div style={styles.pwActions}>
+              <button style={styles.btnPrimary} disabled title={t('account.notImplTitle')}>{t('common.save')}</button>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -108,13 +98,6 @@ function FormField({ label, type = 'text' }: { label: string; type?: string }) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  subtitle: {
-    fontSize: 11,
-    color: 'var(--text-3)',
-    fontFamily: 'var(--mono)',
-    marginTop: 2,
-    fontWeight: 400,
-  },
   userRow: {
     display: 'flex',
     alignItems: 'center',
@@ -138,32 +121,67 @@ const styles: Record<string, React.CSSProperties> = {
 
   divider: { height: 1, background: 'var(--border)', margin: '4px 0 6px' },
 
-  field: { display: 'flex', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed var(--border)' },
+  field: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '6px 0',
+    borderBottom: '1px dashed var(--border)',
+  },
   fieldLabel: { width: 140, fontSize: 12, color: 'var(--text-3)', fontWeight: 500 },
   fieldValue: { flex: 1, fontSize: 12.5, color: 'var(--text)' },
 
-  collapseBtn: {
-    width: '100%',
-    marginTop: 14,
-    padding: '10px 12px',
+  /* Password 섹션 */
+  pwSection: {
+    marginTop: 18,
+    padding: '12px 14px',
     background: 'var(--panel-2)',
     border: '1px solid var(--border)',
-    borderRadius: 4,
-    cursor: 'pointer',
+    borderRadius: 5,
+  },
+  pwHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    textAlign: 'left',
+    gap: 12,
   },
-  collapseTitle: { fontSize: 12.5, fontWeight: 600, color: 'var(--text)' },
-  collapseSub: { fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginTop: 2 },
+  pwTitle: {
+    fontSize: 12.5,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  pwMeta: {
+    fontSize: 11,
+    color: 'var(--text-3)',
+    fontFamily: 'var(--mono)',
+    marginTop: 3,
+  },
+  pwBtn: {
+    padding: '6px 14px',
+    background: 'var(--navy)',
+    color: '#fff',
+    border: '1px solid var(--navy)',
+    borderRadius: 4,
+    fontSize: 12.5,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  pwBtnGhost: {
+    padding: '6px 14px',
+    background: 'var(--panel)',
+    color: 'var(--text-2)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 4,
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
 
   pwForm: {
-    marginTop: 8,
-    padding: '12px 14px',
-    border: '1px solid var(--border)',
-    borderRadius: 4,
-    background: 'var(--panel)',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: '1px solid var(--border)',
   },
   pwNotImpl: {
     padding: '8px 10px',
@@ -176,7 +194,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'var(--mono)',
   },
   formField: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 },
-  formLabel: { fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 500 },
+  formLabel: { fontSize: 11, color: 'var(--text-3)', fontWeight: 500 },
   formInput: {
     padding: '7px 10px',
     border: '1px solid var(--border-strong)',
@@ -187,17 +205,8 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
   },
   pwActions: { display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 6 },
-  btnGhost: {
-    padding: '5px 12px',
-    background: 'transparent',
-    border: '1px solid var(--border-strong)',
-    color: 'var(--text-2)',
-    borderRadius: 4,
-    fontSize: 12,
-    cursor: 'pointer',
-  },
   btnPrimary: {
-    padding: '5px 12px',
+    padding: '5px 14px',
     background: 'var(--navy)',
     color: '#fff',
     border: '1px solid var(--navy)',
@@ -205,16 +214,5 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 600,
     cursor: 'pointer',
-  },
-
-  note: {
-    marginTop: 14,
-    padding: '8px 12px',
-    background: 'var(--panel-2)',
-    border: '1px solid var(--border)',
-    borderRadius: 4,
-    fontSize: 11.5,
-    color: 'var(--text-3)',
-    fontFamily: 'var(--mono)',
   },
 };

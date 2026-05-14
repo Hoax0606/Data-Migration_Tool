@@ -1,53 +1,54 @@
 import { Modal } from './Modal';
+import { useT, type TranslationKey } from '../i18n';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ['Ctrl', 'B'], label: 'Toggle sidebar' },
-  { keys: ['Ctrl', 'K'], label: 'Search projects (placeholder)' },
-  { keys: ['Ctrl', 'N'], label: 'New project (placeholder)' },
-  { keys: ['Esc'], label: 'Close modal / dropdown' },
-];
+interface ShortcutGroup {
+  titleKey: TranslationKey;
+  shortcuts: Array<{ keys: string[]; labelKey: TranslationKey }>;
+}
 
-const TIPS: string[] = [
-  'Dashboard → 한 프로젝트의 TO-BE 테이블 매핑 상태를 한눈에.',
-  'Mapping → AS-IS · TO-BE 컬럼 매핑 정의. 변경 시 자동 lock.',
-  'Versions → 매핑 스냅샷 (master 만 approve 가능).',
-  'Execution → Run 실행·예약·진행상황·격리 처리.',
-  'Artifacts → 검증 리포트·매핑 스냅샷·audit log export.',
-  'Log viewer → 작업·시스템 audit log 조회.',
+const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    titleKey: 'help.group.projectWindows',
+    shortcuts: [
+      { keys: ['Ctrl', 'B'], labelKey: 'help.kb.sidebar' },
+      { keys: ['Esc'],       labelKey: 'help.kb.closeDialog' },
+      { keys: ['Ctrl', 'K'], labelKey: 'help.kb.searchColumns' },
+    ],
+  },
 ];
 
 export function HelpModal({ open, onClose }: Props) {
+  const t = useT();
   return (
-    <Modal open={open} onClose={onClose} title="Help & shortcuts" width={460}>
-      <Section title="Keyboard shortcuts">
-        <table style={styles.kbTable}>
-          <tbody>
-            {SHORTCUTS.map((s, i) => (
-              <tr key={i}>
-                <td style={styles.kbKeys}>
-                  {s.keys.map((k, j) => (
-                    <span key={j}>
-                      <kbd style={styles.kbd}>{k}</kbd>
-                      {j < s.keys.length - 1 && <span style={styles.kbSep}>+</span>}
-                    </span>
-                  ))}
-                </td>
-                <td style={styles.kbLabel}>{s.label}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Section>
-
-      <Section title="What each tab does">
-        <ul style={styles.tipsList}>
-          {TIPS.map((t, i) => <li key={i} style={styles.tipsItem}>{t}</li>)}
-        </ul>
+    <Modal open={open} onClose={onClose} title={t('menu.help')} width={460}>
+      <Section title={t('help.shortcuts')}>
+        {SHORTCUT_GROUPS.map((g) => (
+          <div key={g.titleKey} style={styles.group}>
+            <div style={styles.groupTitle}>[{t(g.titleKey)}]</div>
+            <table style={styles.kbTable}>
+              <tbody>
+                {g.shortcuts.map((s, i) => (
+                  <tr key={i}>
+                    <td style={styles.kbKeys}>
+                      {s.keys.map((k, j) => (
+                        <span key={j}>
+                          <kbd style={styles.kbd}>{k}</kbd>
+                          {j < s.keys.length - 1 && <span style={styles.kbSep}>+</span>}
+                        </span>
+                      ))}
+                    </td>
+                    <td style={styles.kbLabel}>{t(s.labelKey)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       </Section>
     </Modal>
   );
@@ -70,6 +71,14 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: 0.6,
     fontWeight: 600,
     marginBottom: 8,
+  },
+  group: { marginBottom: 10 },
+  groupTitle: {
+    fontSize: 11,
+    color: 'var(--navy)',
+    fontWeight: 600,
+    fontFamily: 'var(--mono)',
+    marginBottom: 4,
   },
   kbTable: {
     width: '100%',
