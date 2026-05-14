@@ -3,28 +3,41 @@ spring:
     name: modernize-pro-data
 
   # ── 메타 DB (Coordinator 가 보관하는 매핑·사용자·audit log 등) ─────────
-  # 개발: H2 file-mode (재시작 후에도 데이터 유지)
-  # 운영: H2 file-mode 또는 SQLite (단일 노드, 외부 DB 의존성 없음)
+  # PostgreSQL 16. 운영 시 인스톨러가 동봉 PG 를 별도 포트로 설치.
+  # 접속 정보는 환경 변수로 주입 (12-factor).
   datasource:
-    url: jdbc:h2:file:./data/meta;AUTO_SERVER=TRUE;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+    url:      ${DB_URL:jdbc:postgresql://localhost:5432/mpd_meta}
+    username: ${DB_USER:mpd}
+    password: ${DB_PASSWORD:mpd}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
 
   jpa:
+    # Flyway 가 스키마 단일 책임. Hibernate 는 검증만.
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # ── Flyway — 스키마 마이그레이션 단독 관리 ───────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # ── Spring Batch — 자체 init 끔. Flyway 가 V1 로 스키마 적용. ──────
+  batch:
+    jdbc:
+      initialize-schema: never
 
   # ── Quartz 스케줄러 ──────────────────────────────────────────────────
+  # PoC: memory job-store (재시작 시 job 초기화).
+  # production: jdbc 로 전환 시 Flyway 마이그레이션에 Quartz 스크립트 추가 필요.
   quartz:
     job-store-type: memory
     properties:
@@ -51,16 +64,16 @@ modernize:
 
   # JWT
   jwt:
-    secret: change-me-in-production-this-must-be-at-least-256-bits-long
+    secret: ${JWT_SECRET:change-me-in-production-this-must-be-at-least-256-bits-long}
     expiration-hours: 8
 
   # CORS (개발 시 Vite dev server 허용)
   cors:
-    allowed-origins: http://localhost:5173,http://localhost:8080
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:8080}
 
   # Coordinator 정보 (Worker 모드일 때 사용)
   coordinator:
-    url: http://localhost:8080
+    url: ${COORDINATOR_URL:http://localhost:8080}
 
   # DuckDB
   duckdb:
