@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore, roleLabel } from '../store/auth';
+import { useUsersStore } from '../store/users';
 import { BrandName } from '../components/BrandName';
 import { AboutModal } from '../components/AboutModal';
 import { HelpModal } from '../components/HelpModal';
@@ -23,6 +24,8 @@ export function AppShell() {
   const t = useT();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const loadUsers = useUsersStore((s) => s.loadUsers);
+  const resetUsers = useUsersStore((s) => s.reset);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userOpen, setUserOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -81,8 +84,16 @@ export function AppShell() {
 
   const handleLogout = () => {
     logout();
+    resetUsers();
     navigate('/login');
   };
+
+  // master 로 로그인 했을 때 사용자 목록 자동 fetch (배정 dropdown 등에서 사용).
+  useEffect(() => {
+    if (user?.role === 'master') {
+      void loadUsers();
+    }
+  }, [user?.role, user?.username, loadUsers]);
 
   return (
     <div style={styles.wrap}>

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { useUsersStore } from '../store/users';
 import { useWorkerNodesStore, type NodeStatus } from '../store/workerNodes';
 import { useAuthStore, roleLabel, type UserRole } from '../store/auth';
+import { ApiError } from '../api/client';
 import { useT, type TranslationKey } from '../i18n';
 
 interface Props {
@@ -60,6 +61,9 @@ function UsersTab() {
   const t = useT();
   const currentUser = useAuthStore((s) => s.user);
   const users = useUsersStore((s) => s.users);
+  const loading = useUsersStore((s) => s.loading);
+  const loadError = useUsersStore((s) => s.error);
+  const loadUsers = useUsersStore((s) => s.loadUsers);
   const addUser = useUsersStore((s) => s.addUser);
   const deleteUser = useUsersStore((s) => s.deleteUser);
   const updateUserRole = useUsersStore((s) => s.updateUserRole);
@@ -69,10 +73,16 @@ function UsersTab() {
   const [newRole, setNewRole] = useState<UserRole>('admin');
   const [newPw, setNewPw] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // 탭 진입 시 최신 사용자 목록 fetch.
+  useEffect(() => {
+    void loadUsers();
+  }, [loadUsers]);
+
   const hasMaster = users.some((u) => u.role === 'master');
-  const canSubmitAdd = !!newName.trim() && !!newPw.trim();
+  const canSubmitAdd = !!newName.trim() && !!newPw.trim() && !submitting;
 
   const resetAddForm = () => {
     setNewName('');
@@ -81,39 +91,58 @@ function UsersTab() {
     setError(null);
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const formatApiError = (e: unknown): string => {
+    if (e instanceof ApiError) {
+      if (e.code === 'USER_ALREADY_EXISTS') return t('userMgmt.add.dupName');
+      return e.message;
+    }
+    return (e as Error).message ?? t('userMgmt.add.failed');
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const name = newName.trim();
     if (!name || !newPw.trim()) return;
-    if (users.some((u) => u.username === name)) {
-      setError(t('userMgmt.add.dupName'));
-      return;
-    }
     if (newRole === 'master' && hasMaster) {
       setError(t('userMgmt.coordExactlyOne'));
       return;
     }
-    addUser({ username: name, role: newRole });
-    resetAddForm();
-    setAddOpen(false);
+    setSubmitting(true);
+    try {
+      await addUser({ username: name, password: newPw, role: newRole });
+      resetAddForm();
+      setAddOpen(false);
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleRoleChange = (id: string, role: UserRole) => {
+  const handleRoleChange = async (id: string, role: UserRole) => {
     const target = users.find((u) => u.id === id);
     if (!target) return;
     if (role === 'master' && target.role !== 'master' && hasMaster) return;
     if (target.role === 'master' && role !== 'master') return;
-    updateUserRole(id, role);
+    try {
+      await updateUserRole(id, role);
+    } catch (err) {
+      setError(formatApiError(err));
+    }
   };
 
-  const handleConfirmDelete = (id: string) => {
+  const handleConfirmDelete = async (id: string) => {
     const target = users.find((u) => u.id === id);
     if (!target) return;
     if (target.username === currentUser?.username) return;
     if (target.role === 'master') return;
-    deleteUser(id);
-    setConfirmDeleteId(null);
+    try {
+      await deleteUser(id);
+      setConfirmDeleteId(null);
+    } catch (err) {
+      setError(formatApiError(err));
+    }
   };
 
   return (
@@ -171,7 +200,11 @@ function UsersTab() {
             </tr>
           </thead>
           <tbody>
-            {users.length === 0 ? (
+            {loading && users.length === 0 ? (
+              <tr><td colSpan={5} style={styles.emptyRow}>{t('userMgmt.loading')}</td></tr>
+            ) : loadError ? (
+              <tr><td colSpan={5} style={{ ...styles.emptyRow, color: 'var(--red)' }}>{loadError}</td></tr>
+            ) : users.length === 0 ? (
               <tr><td colSpan={5} style={styles.emptyRow}>{t('userMgmt.empty')}</td></tr>
             ) : (
               users.map((u, i) => {

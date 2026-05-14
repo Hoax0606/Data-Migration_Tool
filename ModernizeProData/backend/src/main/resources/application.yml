@@ -63,8 +63,10 @@ modernize:
   mode: coordinator
 
   # JWT
+  # PoC secret. Production 직전 rotate. 환경 변수 JWT_SECRET 로 override 가능.
+  # 생성: openssl rand -base64 64
   jwt:
-    secret: ${JWT_SECRET:change-me-in-production-this-must-be-at-least-256-bits-long}
+    secret: ${JWT_SECRET:2h0DvU8r0PfHRT3RoGw3m/qSe+4EYMDY3IfwVeDdnOKm8cmOGvhQDKv/IS1Wr/bHmn0vVfv+eDbVuWyMl3IqkQ==}
     expiration-hours: 8
 
   # CORS (개발 시 Vite dev server 허용)

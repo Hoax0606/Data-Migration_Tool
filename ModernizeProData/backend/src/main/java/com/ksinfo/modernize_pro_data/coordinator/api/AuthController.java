@@ -1,11 +1,11 @@
 package com.ksinfo.modernize_pro_data.coordinator.api;
 
 import com.ksinfo.modernize_pro_data.common.dto.ApiResponse;
-import com.ksinfo.modernize_pro_data.common.exception.ApiException;
+import com.ksinfo.modernize_pro_data.coordinator.auth.AuthService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,18 +15,18 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 /**
- * 인증 컨트롤러 placeholder.
+ * 인증 컨트롤러.
  *
- * POST /api/v1/auth/login   — JWT 발급 (TODO: 실제 사용자 인증·DB 조회)
- * POST /api/v1/auth/logout  — 토큰 무효화 (TODO)
- *
- * 현재는 master/admin 하드코딩으로 placeholder JWT 발급. 사용자·역할 관리 모듈
- * 구현 시 실제 인증·BCrypt 검증·DB 조회·역할 분기로 교체.
+ * POST /api/v1/auth/login   — DB 조회 + BCrypt 검증 + JWT 발급
+ * POST /api/v1/auth/logout  — stateless 라 클라이언트가 토큰 폐기. 서버는 noop.
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
 public class AuthController {
+
+    private final AuthService authService;
 
     public record LoginRequest(
             @NotBlank String username,
@@ -42,33 +42,19 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
-        // TODO: 실제 사용자 DB 조회 + BCrypt 검증 + JWT 발급
-        // 현재는 placeholder: master / admin / viewer 만 하드코딩
-        // 주의: 아이디/비번 구분 메시지는 account enumeration 위험 — 실제 운영 전 통합 메시지로 변경 검토.
-        String role = switch (req.username()) {
-            case "master" -> "master";
-            case "admin"  -> "admin";
-            case "viewer" -> "viewer";
-            default -> throw new ApiException("AUTH_USER_NOT_FOUND", "존재하지 않는 사용자", HttpStatus.UNAUTHORIZED);
-        };
-
-        if (!"password".equals(req.password())) {
-            throw new ApiException("AUTH_PASSWORD_INVALID", "비밀번호가 일치하지 않습니다", HttpStatus.UNAUTHORIZED);
-        }
-
-        log.info("Login: {} ({})", req.username(), role);
-
+        var result = authService.login(req.username(), req.password());
         return ApiResponse.ok(new LoginResponse(
-                "placeholder-jwt-token-" + req.username(),
-                req.username(),
-                role,
-                OffsetDateTime.now().plusHours(8)
+                result.token(),
+                result.username(),
+                result.role(),
+                result.expiresAt()
         ));
     }
 
     @PostMapping("/logout")
     public ApiResponse<Map<String, String>> logout() {
-        // TODO: 토큰 무효화 (현재는 stateless 라 클라이언트가 토큰 폐기만 하면 됨)
+        // Stateless JWT — 서버는 별도 작업 없음. 클라이언트가 토큰 폐기만 하면 됨.
+        // 추후 blacklist (Redis 등) 도입 가능.
         return ApiResponse.ok(Map.of("message", "로그아웃 되었습니다"));
     }
 }

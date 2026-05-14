@@ -1,25 +1,33 @@
 package com.ksinfo.modernize_pro_data.common.config;
 
+import com.ksinfo.modernize_pro_data.coordinator.auth.JwtAuthFilter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Spring Security 기본 설정.
+ * Spring Security 설정.
  *
- * - Stateless (JWT 토큰 기반, 세션 없음)
- * - 인증 없이 허용: /api/v1/health, /api/v1/auth/**, WebSocket handshake
- * - 그 외 모든 경로는 인증 필요 (JWT 필터는 추후 추가)
- *
- * JWT 토큰 검증 필터는 TODO — 인증 모듈 구현 시 추가.
+ * - Stateless (JWT 토큰 기반, 세션 없음).
+ * - JwtAuthFilter 가 UsernamePasswordAuthenticationFilter 전에 동작.
+ * - 인증 없이 허용: /api/v1/health, /api/v1/auth/**, WebSocket handshake.
+ * - /api/v1/users/** 는 master 한정 (@PreAuthorize 가 메서드 레벨에서 강제).
+ * - 그 외 인증 필요.
  */
 @Configuration
+@EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -31,8 +39,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/health/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll() // WebSocket handshake
-                        .anyRequest().permitAll() // TODO: JWT 필터 후 authenticated() 로 변경
-                );
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

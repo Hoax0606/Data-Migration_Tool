@@ -156,6 +156,8 @@ export const en: Record<TranslationKey, string> = {
   'userMgmt.cannotDeleteSelf':  "You can't delete your own account",
   'userMgmt.coordExactlyOne':  'There must be exactly one Coordinator',
   'userMgmt.empty':            'No users provisioned yet',
+  'userMgmt.loading':          'Loading users…',
+  'userMgmt.add.failed':       'Failed to create user',
   'userMgmt.confirmDeletePre': 'Really delete ',
   'userMgmt.confirmDeletePost':'?',
   'userMgmt.confirmDelete':    'Confirm delete',

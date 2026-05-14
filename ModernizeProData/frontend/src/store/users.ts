@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { UserRole } from './auth';
+import { usersApi, type ManagedUserDto } from '../api/users';
 
 export interface ManagedUser {
   id: string;
@@ -12,52 +12,61 @@ export interface ManagedUser {
 
 interface UsersState {
   users: ManagedUser[];
+  loading: boolean;
+  error: string | null;
 
-  addUser: (data: Omit<ManagedUser, 'id' | 'createdAt'>) => ManagedUser;
-  updateUserRole: (id: string, role: UserRole) => void;
-  deleteUser: (id: string) => void;
+  loadUsers: () => Promise<void>;
+  addUser: (data: { username: string; password: string; role: UserRole }) => Promise<ManagedUser>;
+  updateUserRole: (id: string, role: UserRole) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  reset: () => void;
 }
 
-const newId = () => 'u' + Math.random().toString(36).slice(2, 9);
+const toManaged = (dto: ManagedUserDto): ManagedUser => ({
+  id: dto.id,
+  username: dto.username,
+  role: dto.role,
+  createdAt: dto.createdAt,
+  lastSignInAt: dto.lastSignInAt,
+});
 
 /**
- * Site 내 사용자 계정 목록.
- * 현재는 frontend localStorage placeholder — 실제 발급은 백엔드 사용자 모듈로 교체.
- *
- * Coordinator(master) 만 발급·삭제·역할 변경 가능. UI 측 게이트는
- * `UserManagementModal` 에서 처리.
+ * 사용자 계정 목록 store.
+ * 백엔드 (PostgreSQL) 가 source of truth. localStorage 영속 X — 매 로그인 시 fresh fetch.
+ * master 권한이 있을 때만 GET 가능 (백엔드 @PreAuthorize 가 게이트).
  */
-export const useUsersStore = create<UsersState>()(
-  persist(
-    (set) => ({
-      users: [
-        { id: 'u-master',  username: 'master',  role: 'master',  createdAt: '2026-01-01T00:00:00Z', lastSignInAt: new Date().toISOString() },
-        { id: 'u-admin1',  username: 'admin1',  role: 'admin',   createdAt: '2026-01-15T00:00:00Z' },
-        { id: 'u-admin2',  username: 'admin2',  role: 'admin',   createdAt: '2026-02-01T00:00:00Z' },
-        { id: 'u-admin3',  username: 'admin3',  role: 'admin',   createdAt: '2026-02-05T00:00:00Z' },
-        { id: 'u-viewer',  username: 'viewer',  role: 'viewer',  createdAt: '2026-02-10T00:00:00Z' },
-      ],
+export const useUsersStore = create<UsersState>()((set) => ({
+  users: [],
+  loading: false,
+  error: null,
 
-      addUser: (data) => {
-        const u: ManagedUser = {
-          id: newId(),
-          createdAt: new Date().toISOString(),
-          ...data,
-        };
-        set((s) => ({ users: [...s.users, u] }));
-        return u;
-      },
+  loadUsers: async () => {
+    set({ loading: true, error: null });
+    try {
+      const dtos = await usersApi.list();
+      set({ users: dtos.map(toManaged), loading: false });
+    } catch (e) {
+      set({ loading: false, error: (e as Error).message });
+    }
+  },
 
-      updateUserRole: (id, role) =>
-        set((s) => ({
-          users: s.users.map((u) => (u.id === id ? { ...u, role } : u)),
-        })),
+  addUser: async (data) => {
+    const dto = await usersApi.create(data);
+    const u = toManaged(dto);
+    set((s) => ({ users: [...s.users, u] }));
+    return u;
+  },
 
-      deleteUser: (id) =>
-        set((s) => ({
-          users: s.users.filter((u) => u.id !== id),
-        })),
-    }),
-    { name: 'modernize-users', version: 1 },
-  ),
-);
+  updateUserRole: async (id, role) => {
+    const dto = await usersApi.updateRole(id, role);
+    const u = toManaged(dto);
+    set((s) => ({ users: s.users.map((x) => (x.id === id ? u : x)) }));
+  },
+
+  deleteUser: async (id) => {
+    await usersApi.delete(id);
+    set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
+  },
+
+  reset: () => set({ users: [], loading: false, error: null }),
+}));

@@ -161,6 +161,8 @@ export const ja: Record<TranslationKey, string> = {
   'userMgmt.cannotDeleteSelf': '本人のアカウントは削除できません',
   'userMgmt.coordExactlyOne':  'Coordinator はちょうど 1 名でなければなりません',
   'userMgmt.empty':            '発行済みのユーザーがありません',
+  'userMgmt.loading':          'ユーザーリスト読み込み中…',
+  'userMgmt.add.failed':       'ユーザー発行失敗',
   'userMgmt.confirmDeletePre': '本当に ',
   'userMgmt.confirmDeletePost':' を削除しますか？',
   'userMgmt.confirmDelete':    'Confirm delete',

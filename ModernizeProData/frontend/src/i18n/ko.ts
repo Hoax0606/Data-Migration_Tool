@@ -160,6 +160,8 @@ export const ko = {
   'userMgmt.cannotDeleteSelf':  '본인 계정은 삭제할 수 없습니다',
   'userMgmt.coordExactlyOne':  'Coordinator 는 정확히 1명이어야 합니다',
   'userMgmt.empty':            '발급된 사용자가 없습니다',
+  'userMgmt.loading':          '사용자 목록 불러오는 중…',
+  'userMgmt.add.failed':       '사용자 발급 실패',
   'userMgmt.confirmDeletePre': '정말로 ',
   'userMgmt.confirmDeletePost':' 사용자를 삭제하시겠습니까?',
   'userMgmt.confirmDelete':    'Confirm delete',
