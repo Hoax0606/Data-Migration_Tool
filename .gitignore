@@ -1,10 +1,21 @@
 # ── Claude Code 메타 ────────────────────────────────────────────────
-.claude/
+# 팀 공통 설정·명령어·에이전트 (.claude/commands, .claude/agents,
+# .claude/settings.json) 는 git 으로 공유.
+# 개인 permission·세션 캐시·trace 만 제외.
+.claude/settings.local.json
+.claude/projects/
+.claude/trace/
 
-# ── 매뉴얼·문서 작업 폴더 ────────────────────────────────────────────
-# 검토용 산출물(.md / .pdf / .docx / .pptx / 빌드 스크립트 등) 은 외부에
-# 공개할 의도가 아니므로 git 에서 통째로 제외한다.
-docs/
+# ── 매뉴얼·문서 산출물 / 빌드 도구 ──────────────────────────────────
+# .docx / .pdf / .pptx 같은 빌드 산출물 + 빌드 스크립트·CSS 는
+# 외부 공개 의도가 아니므로 제외.
+# .md 원본 (ARCHITECTURE / DESIGN / DEVELOPER_MANUAL / handoff/ 등) 만 공유.
+docs/*.docx
+docs/*.pdf
+docs/*.pptx
+docs/build-*.ps1
+docs/make-*.py
+docs/*.css
 
 # ── 사용자 메모리 디렉토리 (도구 메타) ───────────────────────────────
 **/memory/
@@ -57,14 +68,47 @@ ModernizeProData/**/data/
 *.iml
 *.swp
 *.swo
+.history/
 
 # ── 환경설정·자격증명 ──────────────────────────────────────────────
 .env
 .env.*
 *.local
+*.pem
+*.key
+*.p12
+*.jks
+*.crt
+*.p8
+secrets/
+credentials/
 
 # ── 로그 ────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# ── Vite / Frontend 캐시·임시 ───────────────────────────────────────
+.vite/
+vite.config.ts.timestamp-*
+vite.config.js.timestamp-*
+
+# ── Java / JVM 크래시·힙덤프 ────────────────────────────────────────
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+
+# ── Python 산출물 (docs/make-*.py 같은 빌드 스크립트용) ─────────────
+__pycache__/
+*.pyc
+
+# ── Git / Merge 잔재 ────────────────────────────────────────────────
+*.orig
+*.rej
+
+# ── Docker 로컬 override ────────────────────────────────────────────
+compose.override.yaml
+compose.override.yml
+docker-compose.override.yaml
+docker-compose.override.yml
