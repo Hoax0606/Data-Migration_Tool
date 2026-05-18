@@ -124,7 +124,7 @@ export function SiteSettingsModal({ open, onClose }: Props) {
   const canSave = isDirty && !!name.trim() && !blockedByProd;
   const canTestConnection = !!tobeDb.host.trim() && !!tobeDb.username.trim() && !dbFieldsDisabled;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
     // type 이 비어있는 단계는 저장하지 않음.
     const finalByEnv: TobeDbByEnv = {};
@@ -139,7 +139,7 @@ export function SiteSettingsModal({ open, onClose }: Props) {
     }
     if (finalByEnv[stage]) finalLocks[stage] = true;
 
-    updateSite(site.id, {
+    await updateSite(site.id, {
       name: name.trim(),
       asisEnv,
       tobeEnv,
@@ -154,9 +154,9 @@ export function SiteSettingsModal({ open, onClose }: Props) {
     onClose();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirmText !== site.name) return;
-    deleteSite(site.id);
+    await deleteSite(site.id);
     onClose();
   };
 
@@ -395,11 +395,11 @@ function StagePills({
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label style={styles.field}>
+    <div style={styles.field}>
       <div style={styles.fieldLabel}>{label}</div>
       {hint && <div style={styles.fieldHint}>{hint}</div>}
       {children}
-    </label>
+    </div>
   );
 }
 

@@ -1,18 +1,18 @@
-import { useMemo, useState } from 'react';
-import { useWorkspaceStore } from '../store/workspace';
-import { useSnapshotsStore, type SnapshotStatus } from '../store/snapshots';
+import { useEffect, useMemo, useState } from 'react';
+import { useWorkspaceStore, type ProjectPhase } from '../store/workspace';
+import { useSnapshotsStore, type SnapshotStatus, type SnapshotType } from '../store/snapshots';
 import { useAuthStore } from '../store/auth';
 import { useT, type TranslationKey } from '../i18n';
 
 /**
  * Versions tab — 매핑 스냅샷 관리.
- *  - Worker: 스냅샷 생성 (status=pending)
- *  - Coordinator: pending 스냅샷 approve / reject
+ *  - 스냅샷 생성 = commit (draft 상태, 로컬 rollback 지점)
+ *  - Request = coordinator 에게 승인 요청 (draft → pending)
+ *  - Approve / Reject 는 All Projects → Approvals 에서만 처리
  */
 export function VersionsPage() {
   const t = useT();
   const user = useAuthStore((s) => s.user);
-  const isMaster = user?.role === 'master';
 
   const projects = useWorkspaceStore((s) => s.projects);
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
@@ -22,22 +22,34 @@ export function VersionsPage() {
   );
 
   const allSnapshots = useSnapshotsStore((s) => s.snapshots);
+  const fetchByProject = useSnapshotsStore((s) => s.fetchByProject);
   const snapshots = useMemo(
     () => allSnapshots.filter((s) => s.projectId === activeProjectId).slice().reverse(),
     [allSnapshots, activeProjectId],
   );
   const createSnapshot = useSnapshotsStore((s) => s.createSnapshot);
-  const approveSnapshot = useSnapshotsStore((s) => s.approveSnapshot);
-  const rejectSnapshot = useSnapshotsStore((s) => s.rejectSnapshot);
+  const requestSnapshot = useSnapshotsStore((s) => s.requestSnapshot);
+  const deleteSnapshot = useSnapshotsStore((s) => s.deleteSnapshot);
+
+  // 마운트 시 + 프로젝트 변경 시 서버에서 fetch
+  useEffect(() => {
+    if (activeProjectId) void fetchByProject(activeProjectId);
+  }, [activeProjectId, fetchByProject]);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [createType, setCreateType] = useState<SnapshotType>('mapping');
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
 
-  // 행 별 인라인 상태
-  const [approveId, setApproveId] = useState<string | null>(null);
-  const [rejectId, setRejectId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
+  // cutover snapshot 확인 다이얼로그
+  const [cutoverConfirmOpen, setCutoverConfirmOpen] = useState(false);
+
+  // request 확인
+  const [requestId, setRequestId] = useState<string | null>(null);
+
+  // rehearsal 이후 phase 에서만 cutover snapshot 생성 가능
+  const POST_REHEARSAL: ProjectPhase[] = ['rehearsal', 'ready', 'cutover', 'hypercare', 'done'];
+  const canCreateCutover = project ? POST_REHEARSAL.includes(project.phase) : false;
 
   if (!project) {
     return (
@@ -55,36 +67,44 @@ export function VersionsPage() {
 
   const resetCreate = () => {
     setCreateOpen(false);
+    setCreateType('mapping');
     setNewName('');
     setNewDesc('');
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const openCreate = (type: SnapshotType) => {
+    if (type === 'cutover') {
+      setCutoverConfirmOpen(true);
+      return;
+    }
+    setCreateType(type);
+    setCreateOpen(true);
+  };
+
+  const handleCutoverConfirm = () => {
+    setCutoverConfirmOpen(false);
+    setCreateType('cutover');
+    setCreateOpen(true);
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newName.trim();
     if (!name) return;
-    createSnapshot({
-      projectId: project.id,
+    await createSnapshot(project.id, {
       name,
+      type: createType,
       description: newDesc.trim() || undefined,
-      createdBy: user?.username ?? '—',
       tableCount: project.tableCount,
-      ruleCount: 0, // placeholder
+      ruleCount: 0,
     });
     resetCreate();
   };
 
-  const handleApprove = (id: string) => {
-    approveSnapshot(id, user?.username ?? 'coordinator');
-    setApproveId(null);
-  };
-
-  const handleReject = (id: string) => {
-    const reason = rejectReason.trim();
-    if (!reason) return;
-    rejectSnapshot(id, user?.username ?? 'coordinator', reason);
-    setRejectId(null);
-    setRejectReason('');
+  const handleRequest = async (id: string) => {
+    await requestSnapshot(id);
+    // Phase 전환은 approve 시점에 처리 (ApprovalsPage)
+    setRequestId(null);
   };
 
   return (
@@ -95,11 +115,30 @@ export function VersionsPage() {
       </div>
 
       <div style={styles.toolbar}>
+        {snapshots.length > 0 && (
+          <button
+            onClick={async () => {
+              if (!confirm('Delete all snapshots in this project?')) return;
+              for (const s of snapshots) await deleteSnapshot(s.id);
+            }}
+            style={{ ...styles.btnGhost, color: 'var(--red)', borderColor: 'var(--red)' }}
+          >
+            Delete all ({snapshots.length})
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         {!createOpen ? (
-          <button onClick={() => setCreateOpen(true)} style={styles.btnPrimary}>
-            {t('versions.create')}
-          </button>
+          <>
+            <button onClick={() => openCreate('mapping')} style={styles.btnPrimary}>
+              {t('versions.create')}
+            </button>
+            <button
+              onClick={() => openCreate('cutover')}
+              style={styles.btnCutover}
+            >
+              {t('versions.createCutover')}
+            </button>
+          </>
         ) : (
           <button onClick={resetCreate} style={styles.btnGhost}>
             {t('versions.cancelCreate')}
@@ -107,8 +146,23 @@ export function VersionsPage() {
         )}
       </div>
 
+      {/* Cutover snapshot 확인 다이얼로그 */}
+      {cutoverConfirmOpen && (
+        <div style={styles.cutoverConfirm}>
+          <div style={styles.cutoverConfirmTitle}>{t('versions.cutoverConfirm.title')}</div>
+          <div style={styles.cutoverConfirmDesc}>{t('versions.cutoverConfirm.desc')}</div>
+          <div style={styles.cutoverConfirmActions}>
+            <button onClick={() => setCutoverConfirmOpen(false)} style={styles.btnGhost}>{t('common.cancel')}</button>
+            <button onClick={handleCutoverConfirm} style={styles.btnCutover}>{t('versions.cutoverConfirm.proceed')}</button>
+          </div>
+        </div>
+      )}
+
       {createOpen && (
         <form onSubmit={handleCreate} style={styles.createForm}>
+          <div style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--mono)', color: createType === 'cutover' ? 'var(--red)' : 'var(--navy)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {createType === 'cutover' ? t('versions.type.cutover') : t('versions.type.mapping')} snapshot
+          </div>
           <div style={styles.createRow}>
             <Field label={t('versions.create.name')}>
               <input
@@ -142,6 +196,7 @@ export function VersionsPage() {
           <thead>
             <tr>
               <Th>{t('versions.col.name')}</Th>
+              <Th>{t('versions.col.type')}</Th>
               <Th>{t('versions.col.status')}</Th>
               <Th>{t('versions.col.creator')}</Th>
               <Th>{t('versions.col.size')}</Th>
@@ -151,56 +206,23 @@ export function VersionsPage() {
           </thead>
           <tbody>
             {snapshots.length === 0 ? (
-              <tr><td colSpan={6} style={styles.emptyRow}>{t('versions.empty')}</td></tr>
+              <tr><td colSpan={7} style={styles.emptyRow}>{t('versions.empty')}</td></tr>
             ) : (
               snapshots.map((s, i) => {
                 const rowBg = i % 2 ? 'var(--zebra)' : 'transparent';
 
-                /* ── inline approve confirm bar ── */
-                if (approveId === s.id) {
+                /* ── request 확인 바 ── */
+                if (requestId === s.id) {
                   return (
-                    <tr key={s.id} style={{ background: 'var(--green-50)', borderBottom: '1px solid var(--border)' }}>
-                      <td colSpan={6} style={styles.confirmCell}>
+                    <tr key={s.id} style={{ background: 'var(--navy-50)', borderBottom: '1px solid var(--border)' }}>
+                      <td colSpan={7} style={styles.confirmCell}>
                         <div style={styles.confirmBar}>
                           <span style={styles.confirmText}>
-                            {t('versions.confirmApprovePre')}<b>{s.name}</b>{t('versions.confirmApprovePost')}
+                            {t('versions.confirmRequestPre')}<b>{s.name}</b>{t('versions.confirmRequestPost')}
                           </span>
                           <div style={{ flex: 1 }} />
-                          <button onClick={() => setApproveId(null)} style={styles.miniBtn}>{t('common.cancel')}</button>
-                          <button onClick={() => handleApprove(s.id)} style={styles.miniBtnApprove}>{t('versions.confirmApprove')}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }
-
-                /* ── inline reject form ── */
-                if (rejectId === s.id) {
-                  return (
-                    <tr key={s.id} style={{ background: 'var(--red-50)', borderBottom: '1px solid var(--border)' }}>
-                      <td colSpan={6} style={styles.confirmCell}>
-                        <div style={styles.rejectBar}>
-                          <div style={styles.rejectLabel}>{t('versions.rejectReasonLabel')} · <b>{s.name}</b></div>
-                          <textarea
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            placeholder={t('versions.rejectReasonPh')}
-                            style={styles.rejectInput}
-                            rows={2}
-                            autoFocus
-                          />
-                          <div style={styles.rejectActions}>
-                            <button onClick={() => { setRejectId(null); setRejectReason(''); }} style={styles.miniBtn}>
-                              {t('common.cancel')}
-                            </button>
-                            <button
-                              onClick={() => handleReject(s.id)}
-                              disabled={!rejectReason.trim()}
-                              style={{ ...styles.miniBtnDanger, ...(rejectReason.trim() ? {} : styles.btnDisabled) }}
-                            >
-                              {t('versions.rejectSubmit')}
-                            </button>
-                          </div>
+                          <button onClick={() => setRequestId(null)} style={styles.miniBtn}>{t('common.cancel')}</button>
+                          <button onClick={() => handleRequest(s.id)} style={styles.miniBtnRequest}>{t('versions.confirmRequest')}</button>
                         </div>
                       </td>
                     </tr>
@@ -212,6 +234,11 @@ export function VersionsPage() {
                     <td style={styles.td}>
                       <div style={styles.nameMain}>{s.name}</div>
                       {s.description && <div style={styles.nameDesc}>{s.description}</div>}
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ ...styles.typeBadge, ...((s.type ?? 'mapping') === 'cutover' ? styles.typeCutover : styles.typeMapping) }}>
+                        {(s.type ?? 'mapping') === 'cutover' ? t('versions.type.cutover') : t('versions.type.mapping')}
+                      </span>
                     </td>
                     <td style={styles.td}>
                       <span style={{ ...styles.statusBadge, ...statusTone(s.status) }}>{t(STATUS_KEY[s.status])}</span>
@@ -246,21 +273,13 @@ export function VersionsPage() {
                         <button style={{ ...styles.miniBtn, opacity: 0.55, cursor: 'not-allowed' }} disabled title={t('versions.view')}>
                           {t('versions.view')}
                         </button>
+                        {s.status === 'draft' && (
+                          <button onClick={() => setRequestId(s.id)} style={styles.miniBtnRequest}>
+                            {t('versions.request')}
+                          </button>
+                        )}
                         {s.status === 'pending' && (
-                          isMaster ? (
-                            <>
-                              <button onClick={() => setApproveId(s.id)} style={styles.miniBtnApprove}>
-                                {t('versions.approve')}
-                              </button>
-                              <button onClick={() => { setRejectId(s.id); setRejectReason(''); }} style={styles.miniBtnDanger}>
-                                {t('versions.reject')}
-                              </button>
-                            </>
-                          ) : (
-                            <span style={styles.coordOnlyTag} title={t('versions.approveCoord')}>
-                              {t('versions.approveCoord')}
-                            </span>
-                          )
+                          <span style={styles.pendingTag}>{t('versions.requested')}</span>
                         )}
                       </div>
                     </td>
@@ -276,6 +295,7 @@ export function VersionsPage() {
 }
 
 const STATUS_KEY: Record<SnapshotStatus, TranslationKey> = {
+  draft:    'versions.status.draft',
   pending:  'versions.status.pending',
   approved: 'versions.status.approved',
   rejected: 'versions.status.rejected',
@@ -283,6 +303,7 @@ const STATUS_KEY: Record<SnapshotStatus, TranslationKey> = {
 
 function statusTone(s: SnapshotStatus): React.CSSProperties {
   switch (s) {
+    case 'draft':    return { background: 'var(--panel-2)', color: 'var(--text-3)', borderColor: 'var(--border-strong)' };
     case 'pending':  return { background: 'var(--amber-50)', color: 'var(--amber)', borderColor: 'var(--amber)' };
     case 'approved': return { background: 'var(--green-50)', color: 'var(--green)', borderColor: 'var(--green)' };
     case 'rejected': return { background: 'var(--red-50)',   color: 'var(--red)',   borderColor: 'var(--red)' };
@@ -295,10 +316,10 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label style={styles.field}>
+    <div style={styles.field}>
       <div style={styles.fieldLabel}>{label}</div>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -308,6 +329,17 @@ const styles: Record<string, React.CSSProperties> = {
   subtitle: { margin: '4px 0 0', fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' },
 
   toolbar: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 },
+
+  cutoverConfirm: {
+    background: 'var(--red-50)',
+    border: '1px solid var(--red)',
+    borderRadius: 5,
+    padding: 14,
+    marginBottom: 12,
+  },
+  cutoverConfirmTitle: { fontSize: 13, fontWeight: 700, color: 'var(--red)', marginBottom: 6 },
+  cutoverConfirmDesc: { fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 10 },
+  cutoverConfirmActions: { display: 'flex', justifyContent: 'flex-end', gap: 6 },
 
   createForm: {
     background: 'var(--panel-2)',
@@ -365,8 +397,19 @@ const styles: Record<string, React.CSSProperties> = {
   empty: { background: 'var(--panel)', border: '1px dashed var(--border-strong)', borderRadius: 6, padding: '50px 24px', textAlign: 'center' },
   emptyTitle: { fontSize: 13, fontWeight: 600, color: 'var(--text-3)' },
 
+  typeBadge: {
+    display: 'inline-block', padding: '2px 7px', fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)',
+    border: '1px solid', borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.3,
+  },
+  typeMapping: { background: 'var(--navy-50)', color: 'var(--navy)', borderColor: 'var(--navy)' },
+  typeCutover: { background: 'var(--red-50)', color: 'var(--red)', borderColor: 'var(--red)' },
+
   btnPrimary: {
     padding: '6px 12px', background: 'var(--navy)', color: '#fff', border: '1px solid var(--navy)',
+    borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+  },
+  btnCutover: {
+    padding: '6px 12px', background: 'var(--panel)', color: 'var(--red)', border: '1px solid var(--red)',
     borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
   },
   btnGhost: {
@@ -379,45 +422,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '3px 9px', fontSize: 11, border: '1px solid var(--border-strong)',
     background: 'var(--panel)', color: 'var(--text-2)', borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap',
   },
-  miniBtnApprove: {
-    padding: '3px 9px', fontSize: 11, border: '1px solid var(--green)',
-    background: 'var(--panel)', color: 'var(--green)', borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600,
+  miniBtnRequest: {
+    padding: '3px 9px', fontSize: 11, border: '1px solid var(--navy)',
+    background: 'var(--panel)', color: 'var(--navy)', borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600,
   },
-  miniBtnDanger: {
-    padding: '3px 9px', fontSize: 11, border: '1px solid var(--red)',
-    background: 'var(--panel)', color: 'var(--red)', borderRadius: 3, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600,
-  },
-  coordOnlyTag: {
-    padding: '3px 8px',
-    fontSize: 10.5,
-    fontWeight: 700,
-    fontFamily: 'var(--mono)',
-    background: 'var(--amber-50)',
-    color: 'var(--amber)',
-    border: '1px solid var(--amber)',
-    borderRadius: 3,
-    whiteSpace: 'nowrap',
+  pendingTag: {
+    padding: '3px 8px', fontSize: 10.5, fontWeight: 700, fontFamily: 'var(--mono)',
+    background: 'var(--amber-50)', color: 'var(--amber)', border: '1px solid var(--amber)',
+    borderRadius: 3, whiteSpace: 'nowrap',
   },
 
-  /* inline confirm / reject bars */
+  /* inline confirm bar */
   confirmCell: { padding: '10px 12px' },
   confirmBar: { display: 'flex', alignItems: 'center', gap: 8, width: '100%' },
   confirmText: { fontSize: 12, color: 'var(--text)', fontFamily: 'var(--sans)', whiteSpace: 'nowrap' },
-
-  rejectBar: { display: 'flex', flexDirection: 'column', gap: 6, width: '100%' },
-  rejectLabel: { fontSize: 11.5, fontWeight: 600, color: 'var(--red)' },
-  rejectInput: {
-    width: '100%',
-    padding: '7px 10px',
-    border: '1px solid var(--red)',
-    borderRadius: 4,
-    background: 'var(--panel)',
-    color: 'var(--text)',
-    fontSize: 12.5,
-    outline: 'none',
-    resize: 'vertical',
-    minHeight: 48,
-    fontFamily: 'var(--mono)',
-  },
-  rejectActions: { display: 'flex', justifyContent: 'flex-end', gap: 6 },
 };

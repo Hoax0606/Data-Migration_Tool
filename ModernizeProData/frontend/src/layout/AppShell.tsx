@@ -13,6 +13,7 @@ import { CreateProjectModal } from '../components/CreateProjectModal';
 import { SignOutModal } from '../components/SignOutModal';
 import { ClusterAdminModal } from '../components/ClusterAdminModal';
 import { useWorkspaceStore } from '../store/workspace';
+import { useSnapshotsStore } from '../store/snapshots';
 import { useT } from '../i18n';
 
 /**
@@ -23,9 +24,11 @@ export function AppShell() {
   const navigate = useNavigate();
   const t = useT();
   const user = useAuthStore((s) => s.user);
+  const isMaster = user?.role === 'master';
   const logout = useAuthStore((s) => s.logout);
   const loadUsers = useUsersStore((s) => s.loadUsers);
   const resetUsers = useUsersStore((s) => s.reset);
+  const allSnapshots = useSnapshotsStore((s) => s.snapshots);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [userOpen, setUserOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -50,6 +53,31 @@ export function AppShell() {
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId);
   const setActiveProject = useWorkspaceStore((s) => s.setActiveProject);
   const setActiveSite = useWorkspaceStore((s) => s.setActiveSite);
+  const fetchSites = useWorkspaceStore((s) => s.fetchSites);
+  const fetchProjects = useWorkspaceStore((s) => s.fetchProjects);
+
+  // 모달이 열려있으면 polling 일시 중지 (편집 중 서버 데이터로 덮어쓰기 방지)
+  const isEditing = siteSettingsOpen || createSiteOpen || createProjectOpen;
+  const isEditingRef = useRef(isEditing);
+  isEditingRef.current = isEditing;
+
+  const fetchSnapshots = useSnapshotsStore((s) => s.fetchBySite);
+
+  // 10초 간격으로 서버 동기화 (sites → projects → snapshots 순서 보장)
+  useEffect(() => {
+    const sync = async () => {
+      if (isEditingRef.current) return;
+      await fetchSites();
+      const siteId = useWorkspaceStore.getState().activeSiteId;
+      if (siteId) {
+        await fetchProjects(siteId);
+        await fetchSnapshots(siteId);
+      }
+    };
+    void sync();
+    const id = setInterval(() => void sync(), 10_000);
+    return () => clearInterval(id);
+  }, [fetchSites, fetchProjects, fetchSnapshots]);
 
   const activeSite = useMemo(() => sites.find((s) => s.id === activeSiteId) ?? null, [sites, activeSiteId]);
   const activeProject = useMemo(() => allProjects.find((p) => p.id === activeProjectId) ?? null, [allProjects, activeProjectId]);
@@ -186,7 +214,7 @@ export function AppShell() {
           </div>
 
           {/* All projects */}
-          <div style={styles.allProjects} onClick={() => { setActiveProject(null); navigate('/'); }}>
+          <div style={{ ...styles.allProjects, ...(activeProjectId === null && activeSiteId ? styles.allProjectsActive : {}) }} onClick={() => { setActiveProject(null); navigate('/'); }}>
             <div style={styles.allProjectsIcon}>
               <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
                 <rect x="0" y="0" width="4" height="4" />
@@ -231,7 +259,7 @@ export function AppShell() {
                   <div style={styles.projectName}>{p.name}</div>
                   <div style={styles.projectMeta}>
                     {(() => {
-                      const c = phaseColors(p.phase);
+                      const c = phaseColors(p.phase, p.runStatus);
                       return (
                         <span style={{ ...styles.phaseBadge, background: c.bg, color: c.color, borderColor: c.border }}>
                           {p.phase}
@@ -326,7 +354,7 @@ export function AppShell() {
                 <div style={styles.topTitleMain}>
                   {activeProject.name}
                   {(() => {
-                    const c = phaseColors(activeProject.phase);
+                    const c = phaseColors(activeProject.phase, activeProject.runStatus);
                     return (
                       <span style={{ ...styles.phaseBadgeTop, background: c.bg, color: c.color, borderColor: c.border }}>
                         {activeProject.phase}
@@ -352,57 +380,68 @@ export function AppShell() {
 
           <div style={{ flex: 1 }} />
 
-          {/* 알림 bell + popover */}
-          <div ref={notifRef} style={{ position: 'relative' }}>
-            <button
-              title={t('notifications.title')}
-              onClick={(e) => { e.stopPropagation(); setNotifOpen((o) => !o); }}
-              style={{ ...styles.bellBtn, ...(notifOpen ? styles.bellBtnActive : {}) }}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
-                <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
-              </svg>
-            </button>
-            {notifOpen && (() => {
-              // 데이터 연결 전까지는 항상 빈 상태 → 액션 비활성
-              const notifCount = 0;
-              const hasUnread = false;
-              return (
-                <div style={styles.notifPanel} onClick={(e) => e.stopPropagation()}>
-                  <div style={styles.notifHeader}>
-                    <span style={styles.notifHeaderTitle}>{t('notifications.title')}</span>
-                    <div style={styles.notifHeaderActions}>
-                      <button
-                        type="button"
-                        disabled={!hasUnread}
-                        style={{ ...styles.notifAction, ...(hasUnread ? {} : styles.notifActionDisabled) }}
-                      >
-                        {t('notifications.markAllRead')}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={notifCount === 0}
-                        style={{ ...styles.notifAction, ...(notifCount > 0 ? {} : styles.notifActionDisabled) }}
-                      >
-                        {t('notifications.clearAll')}
-                      </button>
+          {/* 알림 bell + popover — coordinator 에게 pending snapshot 표시 */}
+          {(() => {
+            const siteProjectIds = new Set(allProjects.filter((p) => p.siteId === activeSiteId).map((p) => p.id));
+            const pendingSnapshots = allSnapshots.filter((s) => s.status === 'pending' && siteProjectIds.has(s.projectId));
+            const pendingCount = isMaster ? pendingSnapshots.length : 0;
+            return (
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button
+                  title={t('notifications.title')}
+                  onClick={(e) => { e.stopPropagation(); setNotifOpen((o) => !o); }}
+                  style={{ ...styles.bellBtn, ...(notifOpen ? styles.bellBtnActive : {}) }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+                    <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
+                    <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
+                  </svg>
+                  {pendingCount > 0 && (
+                    <span style={styles.bellBadge}>{pendingCount}</span>
+                  )}
+                </button>
+                {notifOpen && (
+                  <div style={styles.notifPanel} onClick={(e) => e.stopPropagation()}>
+                    <div style={styles.notifHeader}>
+                      <span style={styles.notifHeaderTitle}>{t('notifications.title')}</span>
                     </div>
+                    {pendingCount === 0 ? (
+                      <div style={styles.notifEmpty}>
+                        <div style={styles.notifEmptyIcon}>
+                          <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                            <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
+                            <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
+                          </svg>
+                        </div>
+                        <div style={styles.notifEmptyTitle}>{t('notifications.empty.title')}</div>
+                        <div style={styles.notifEmptyHint}>{t('notifications.empty.hint')}</div>
+                      </div>
+                    ) : (
+                      <div style={styles.notifList}>
+                        {pendingSnapshots.map((snap) => {
+                          const proj = allProjects.find((p) => p.id === snap.projectId);
+                          return (
+                            <div key={snap.id} style={styles.notifItem} onClick={() => { setNotifOpen(false); navigate('/site/approvals'); }}>
+                              <div style={styles.notifItemTitle}>
+                                <span style={styles.notifTypeBadge}>{(snap.type ?? 'mapping') === 'cutover' ? 'CUTOVER' : 'MAPPING'}</span>
+                                {snap.name}
+                              </div>
+                              <div style={styles.notifItemMeta}>
+                                {proj?.name ?? '—'} · {snap.createdBy} · {new Date(snap.createdAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div style={styles.notifFooter} onClick={() => { setNotifOpen(false); navigate('/site/approvals'); }}>
+                          {t('notifications.viewAll')}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={styles.notifEmpty}>
-                    <div style={styles.notifEmptyIcon}>
-                      <svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-                        <path d="M8 1.5a4 4 0 0 0-4 4v3l-1.5 2.5h11L12 8V5.5a4 4 0 0 0-4-4z" />
-                        <path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" />
-                      </svg>
-                    </div>
-                    <div style={styles.notifEmptyTitle}>{t('notifications.empty.title')}</div>
-                    <div style={styles.notifEmptyHint}>{t('notifications.empty.hint')}</div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* AS-IS / TO-BE 인디케이터 (placeholder) */}
           <button title="AS-IS status (placeholder)" style={styles.statusPill}>
@@ -464,13 +503,24 @@ function siteBadge(name: string): string {
   return name.split(/\s+/).map((w) => w[0]).join('').slice(0, 3).toUpperCase() || '?';
 }
 
-/** phase 별 의미색 (badge bg / border / text). 사이드바·탑바 phase badge 공통. */
-function phaseColors(phase: string): { bg: string; color: string; border: string } {
+/** phase 별 의미색 (badge bg / border / text). 사이드바·탑바 phase badge 공통.
+ *  test/rehearsal completed → 흰배경 + 검정글씨 + 검정테두리.
+ *  test/rehearsal/cutover 는 running 중에만 고유색, idle 이면 표시 안 됨 (phase 자체가 바뀜). */
+function phaseColors(phase: string, runStatus?: string): { bg: string; color: string; border: string } {
+  if (runStatus === 'completed' && (phase === 'test' || phase === 'rehearsal')) {
+    return {
+      bg:     'var(--panel)',
+      color:  'var(--text)',
+      border: 'var(--border-strong)',
+    };
+  }
   const map: Record<string, string> = {
     'planning':  'planning',
     'analysis':  'analysis',
+    'test':      'test',
     'rehearsal': 'rehearsal',
     'sign-off':  'signoff',
+    'ready':     'ready',
     'cutover':   'cutover',
     'hypercare': 'hypercare',
     'done':      'done',
@@ -765,17 +815,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'var(--mono)',
   },
 
-  /* 프로젝트 row */
+  /* 프��젝트 row */
   projectRow: {
     padding: '6px 10px',
     margin: '1px 0',
     borderRadius: 3,
     cursor: 'pointer',
-    border: '1px solid transparent',
   },
   projectRowActive: {
-    background: 'var(--navy-50)',
-    borderColor: 'var(--border-strong)',
+    background: 'var(--green-50)',
+    boxShadow: 'inset 3px 0 0 var(--green)',
   },
   projectName: {
     fontSize: 11.5,
@@ -793,7 +842,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   projectMetaDim: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--mono)' },
   phaseBadge: {
-    padding: '1px 5px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 64,
+    padding: '1px 0',
     fontSize: 9,
     fontWeight: 700,
     fontFamily: 'var(--mono)',
@@ -803,6 +856,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
+    textAlign: 'center',
+    flexShrink: 0,
   },
   phaseBadgeTop: {
     marginLeft: 8,
@@ -852,6 +907,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     cursor: 'pointer',
     borderBottom: '1px solid var(--border)',
+  },
+  allProjectsActive: {
+    background: 'var(--green-50)',
+    boxShadow: 'inset 3px 0 0 var(--green)',
   },
   allProjectsIcon: {
     width: 18,
@@ -1040,6 +1099,7 @@ const styles: Record<string, React.CSSProperties> = {
   topTitleSub: { fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'var(--mono)' },
 
   bellBtn: {
+    position: 'relative',
     width: 28,
     height: 28,
     background: 'transparent',
@@ -1056,6 +1116,23 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--panel-2)',
     borderColor: 'var(--border)',
     color: 'var(--navy)',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 8,
+    background: 'var(--red)',
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 3px',
+    lineHeight: 1,
   },
   notifPanel: {
     position: 'absolute',
@@ -1123,6 +1200,46 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-4)',
     fontFamily: 'var(--mono)',
     lineHeight: 1.5,
+  },
+  notifList: { maxHeight: 280, overflow: 'auto' },
+  notifItem: {
+    padding: '9px 12px',
+    borderBottom: '1px solid var(--border)',
+    cursor: 'pointer',
+  },
+  notifItemTitle: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--text)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifTypeBadge: {
+    fontSize: 9,
+    fontWeight: 700,
+    fontFamily: 'var(--mono)',
+    padding: '1px 5px',
+    borderRadius: 2,
+    background: 'var(--amber-50)',
+    color: 'var(--amber)',
+    border: '1px solid var(--amber)',
+    letterSpacing: 0.3,
+  },
+  notifItemMeta: {
+    fontSize: 10.5,
+    color: 'var(--text-3)',
+    fontFamily: 'var(--mono)',
+    marginTop: 3,
+  },
+  notifFooter: {
+    padding: '8px 12px',
+    fontSize: 11.5,
+    fontWeight: 600,
+    color: 'var(--navy)',
+    textAlign: 'center',
+    cursor: 'pointer',
+    borderTop: '1px solid var(--border)',
   },
   statusPill: {
     display: 'inline-flex',

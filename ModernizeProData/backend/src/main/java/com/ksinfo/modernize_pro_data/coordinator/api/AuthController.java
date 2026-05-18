@@ -37,7 +37,8 @@ public class AuthController {
             String token,
             String username,
             String role,
-            OffsetDateTime expiresAt
+            OffsetDateTime expiresAt,
+            OffsetDateTime lastSignInAt
     ) {}
 
     @PostMapping("/login")
@@ -47,7 +48,8 @@ public class AuthController {
                 result.token(),
                 result.username(),
                 result.role(),
-                result.expiresAt()
+                result.expiresAt(),
+                result.lastSignInAt()
         ));
     }
 

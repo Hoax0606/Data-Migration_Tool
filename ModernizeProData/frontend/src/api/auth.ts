@@ -11,6 +11,7 @@ export interface LoginResponse {
   username: string;
   role: UserRole;
   expiresAt: string;
+  lastSignInAt: string | null;
 }
 
 export const authApi = {

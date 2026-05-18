@@ -2,8 +2,16 @@ spring:
   application:
     name: modernize-pro-data
 
+  # ── Docker Compose 자동 기동 비활성 ───────────────────────────────────
+  # 기본 PG 경로는 인스톨러 동봉 (production) / 로컬 설치본 (dev). compose
+  # 는 명시적으로 `docker compose up` 으로만 사용. compose 사용 원하면
+  # profile/env 에서 enabled=true 로 overrride.
+  docker:
+    compose:
+      enabled: false
+
   # ── 메타 DB (Coordinator 가 보관하는 매핑·사용자·audit log 등) ─────────
-  # PostgreSQL 16. 운영 시 인스톨러가 동봉 PG 를 별도 포트로 설치.
+  # PostgreSQL 18. 운영 시 인스톨러가 동봉 PG 를 별도 포트로 설치.
   # 접속 정보는 환경 변수로 주입 (12-factor).
   datasource:
     url:      ${DB_URL:jdbc:postgresql://localhost:5432/mpd_meta}
@@ -50,6 +58,7 @@ spring:
 
 # ── 서버 설정 ───────────────────────────────────────────────────────────
 server:
+  address: 0.0.0.0
   port: 8080
   servlet:
     encoding:

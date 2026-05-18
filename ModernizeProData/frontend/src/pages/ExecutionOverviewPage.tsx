@@ -5,7 +5,7 @@ import { useUsersStore } from '../store/users';
 import { useAuthStore } from '../store/auth';
 import { useT } from '../i18n';
 
-const PHASES: Project['phase'][] = ['planning', 'analysis', 'sign-off', 'rehearsal', 'cutover', 'hypercare', 'done'];
+const PHASES: Project['phase'][] = ['planning', 'analysis', 'test', 'sign-off', 'rehearsal', 'ready', 'cutover', 'hypercare', 'done'];
 
 /**
  * Execution overview — 사이트 전체 프로젝트의 이행 실행 결과 모니터링.
@@ -64,8 +64,12 @@ export function ExecutionOverviewPage() {
     return true;
   });
 
-  // 체크박스는 rehearsal·cutover 단계에서만 활성. 그 외 phase 는 disabled.
-  const isSelectable = (p: Project) => p.phase === 'rehearsal' || p.phase === 'cutover';
+  // 체크박스 활성 기준: prod stage → ready 만, non-prod → rehearsal / test.
+  const isProd = site?.environment === 'production';
+  const isSelectable = (p: Project) => {
+    if (isProd) return p.phase === 'ready';
+    return p.phase === 'rehearsal' || p.phase === 'test';
+  };
 
   const toggleOne = (id: string) =>
     setSelected((cur) => {
@@ -93,7 +97,7 @@ export function ExecutionOverviewPage() {
     }
   };
 
-  const runningPhases: Project['phase'][] = ['cutover', 'rehearsal', 'hypercare'];
+  const runningPhases: Project['phase'][] = ['cutover', 'rehearsal', 'hypercare', 'test'];
   const selectedRunningCount = siteProjects.filter(
     (p) => selected.has(p.id) && runningPhases.includes(p.phase),
   ).length;
@@ -244,7 +248,9 @@ export function ExecutionOverviewPage() {
               filteredProjects.map((p, i) => {
                 const checked = selected.has(p.id);
                 const selectable = isSelectable(p);
+                const dimmed = !selectable;
                 const rowBg = checked ? 'var(--navy-50)' : i % 2 ? 'var(--zebra)' : 'transparent';
+                const dimColor = dimmed ? 'var(--text-4)' : undefined;
                 const progress = 0; // placeholder
                 return (
                   <tr key={p.id} style={{ background: rowBg, borderBottom: '1px solid var(--border)' }}>
@@ -259,10 +265,10 @@ export function ExecutionOverviewPage() {
                       />
                     </td>
                     <td style={styles.td}>
-                      <span style={styles.projName}>{p.name}</span>
+                      <span style={{ ...styles.projName, ...(dimColor ? { color: dimColor } : {}) }}>{p.name}</span>
                     </td>
                     <td style={styles.td}>
-                      <span style={{ ...styles.phaseChip, ...phaseChipColor(p.phase) }}>{p.phase}</span>
+                      <span style={{ ...styles.phaseChip, ...phaseChipColor(p.phase, p.runStatus) }}>{p.phase}</span>
                     </td>
                     <td style={styles.td}>
                       {isMaster ? (
@@ -326,10 +332,17 @@ function Th({ children, align, width }: { children?: React.ReactNode; align?: 'l
   );
 }
 
-function phaseChipColor(phase: string): React.CSSProperties {
+function phaseChipColor(phase: string, runStatus?: string): React.CSSProperties {
+  if (runStatus === 'completed' && (phase === 'test' || phase === 'rehearsal')) {
+    return {
+      background: 'var(--panel)',
+      color:      'var(--text)',
+      borderColor:'var(--border-strong)',
+    };
+  }
   const slugMap: Record<string, string> = {
-    planning: 'planning', analysis: 'analysis', rehearsal: 'rehearsal',
-    'sign-off': 'signoff', cutover: 'cutover', hypercare: 'hypercare', done: 'done',
+    planning: 'planning', analysis: 'analysis', test: 'test', rehearsal: 'rehearsal',
+    'sign-off': 'signoff', ready: 'ready', cutover: 'cutover', hypercare: 'hypercare', done: 'done',
   };
   const slug = slugMap[phase] ?? 'done';
   return {
@@ -432,9 +445,10 @@ const styles: Record<string, React.CSSProperties> = {
   projName: { fontWeight: 600, color: 'var(--text)', fontSize: 12.5 },
 
   phaseChip: {
-    display: 'inline-block', padding: '1px 7px', fontSize: 10.5, fontWeight: 700,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 72, padding: '2px 0', fontSize: 10, fontWeight: 700,
     fontFamily: 'var(--mono)', border: '1px solid', borderRadius: 3,
-    textTransform: 'uppercase', letterSpacing: 0.4,
+    textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center', flexShrink: 0,
   },
 
   assigneeSelect: {

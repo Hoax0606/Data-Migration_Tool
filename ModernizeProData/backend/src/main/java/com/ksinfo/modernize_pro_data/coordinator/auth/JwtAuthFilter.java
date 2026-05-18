@@ -1,5 +1,6 @@
 package com.ksinfo.modernize_pro_data.coordinator.auth;
 
+import com.ksinfo.modernize_pro_data.coordinator.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,12 +20,14 @@ import java.util.List;
 /**
  * Authorization: Bearer xxx 헤더의 JWT 를 검증하고 SecurityContext 에 사용자/권한 주입.
  * 토큰 없거나 잘못된 경우 그냥 통과 (SecurityConfig 의 authorizeHttpRequests 가 거부).
+ * 삭제된 사용자는 DB 조회 후 인증 거부 → 프론트에서 401 수신 시 자동 로그아웃.
  */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -38,7 +41,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             jwtService.parse(token).ifPresent(claims -> {
                 String username = claims.getSubject();
                 String role = claims.get("role", String.class);
-                if (username != null && role != null) {
+                if (username != null && role != null && userRepository.existsByUsername(username)) {
                     var authority = new SimpleGrantedAuthority("ROLE_" + role.toUpperCase());
                     var auth = new UsernamePasswordAuthenticationToken(username, null, List.of(authority));
                     auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

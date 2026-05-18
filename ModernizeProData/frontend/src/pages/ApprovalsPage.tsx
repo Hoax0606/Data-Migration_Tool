@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { useWorkspaceStore } from '../store/workspace';
-import { useSnapshotsStore, type SnapshotStatus } from '../store/snapshots';
+import { useWorkspaceStore, type ProjectPhase } from '../store/workspace';
+import { useSnapshotsStore, type SnapshotStatus, type SnapshotType } from '../store/snapshots';
+import { projectApi } from '../api/workspace';
 import { useAuthStore } from '../store/auth';
 import { useT, type TranslationKey } from '../i18n';
 
 type StatusFilter = 'all' | SnapshotStatus;
+type TypeFilter = 'all' | SnapshotType;
 
 /**
  * 사이트 단위 승인 화면 — 모든 프로젝트의 스냅샷 승인·거부 + 이력 (Coordinator only edit, all-read).
@@ -21,10 +23,17 @@ export function ApprovalsPage() {
   const site = useMemo(() => sites.find((s) => s.id === activeSiteId) ?? null, [sites, activeSiteId]);
 
   const allSnapshots = useSnapshotsStore((s) => s.snapshots);
+  const fetchBySite = useSnapshotsStore((s) => s.fetchBySite);
   const approveSnapshot = useSnapshotsStore((s) => s.approveSnapshot);
   const rejectSnapshot = useSnapshotsStore((s) => s.rejectSnapshot);
 
+  // 마운트 시 사이트 전체 스냅샷 fetch
+  useEffect(() => {
+    if (activeSiteId) void fetchBySite(activeSiteId);
+  }, [activeSiteId, fetchBySite]);
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [authorFilter, setAuthorFilter] = useState<string>('all');
   const [approveId, setApproveId] = useState<string | null>(null);
@@ -37,9 +46,9 @@ export function ApprovalsPage() {
   );
   const projectIds = useMemo(() => new Set(siteProjects.map((p) => p.id)), [siteProjects]);
 
-  // 사이트 내 스냅샷 (필터 적용 전) — author 옵션 산출용
+  // 사이트 내 스냅샷 (draft 제외 — request 된 것만 표시)
   const siteSnapshots = useMemo(
-    () => allSnapshots.filter((s) => projectIds.has(s.projectId)),
+    () => allSnapshots.filter((s) => projectIds.has(s.projectId) && s.status !== 'draft'),
     [allSnapshots, projectIds],
   );
 
@@ -53,23 +62,35 @@ export function ApprovalsPage() {
   const snapshots = useMemo(() => {
     let list = siteSnapshots;
     if (statusFilter !== 'all') list = list.filter((s) => s.status === statusFilter);
+    if (typeFilter !== 'all') list = list.filter((s) => (s.type ?? 'mapping') === typeFilter);
     if (projectFilter !== 'all') list = list.filter((s) => s.projectId === projectFilter);
     if (authorFilter !== 'all')  list = list.filter((s) => s.createdBy === authorFilter);
     return list.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [siteSnapshots, statusFilter, projectFilter, authorFilter]);
+  }, [siteSnapshots, statusFilter, typeFilter, projectFilter, authorFilter]);
 
   if (activeProjectId) return <Navigate to="/" replace />;
   if (!site) return <Navigate to="/" replace />;
 
-  const handleApprove = (id: string) => {
-    approveSnapshot(id, user?.username ?? 'coordinator');
+  const handleApprove = async (id: string) => {
+    const snap = allSnapshots.find((s) => s.id === id);
+    await approveSnapshot(id);
+    // Approve 시 phase 전환: mapping → sign-off, cutover → ready
+    if (snap) {
+      const proj = siteProjects.find((p) => p.id === snap.projectId);
+      if (proj) {
+        const newPhase: ProjectPhase = (snap.type ?? 'mapping') === 'cutover' ? 'ready' : 'sign-off';
+        try {
+          await projectApi.update(proj.id, { phase: newPhase, runStatus: 'idle' });
+        } catch { /* polling 에서 동기화 */ }
+      }
+    }
     setApproveId(null);
   };
 
-  const handleReject = (id: string) => {
+  const handleReject = async (id: string) => {
     const reason = rejectReason.trim();
     if (!reason) return;
-    rejectSnapshot(id, user?.username ?? 'coordinator', reason);
+    await rejectSnapshot(id, reason);
     setRejectId(null);
     setRejectReason('');
   };
@@ -89,6 +110,13 @@ export function ApprovalsPage() {
             <option value="pending">{t('versions.status.pending')}</option>
             <option value="approved">{t('versions.status.approved')}</option>
             <option value="rejected">{t('versions.status.rejected')}</option>
+          </select>
+        </Filter>
+        <Filter label={t('approvals.filter.type')}>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)} style={styles.select}>
+            <option value="all">{t('approvals.filter.all')}</option>
+            <option value="mapping">{t('versions.type.mapping')}</option>
+            <option value="cutover">{t('versions.type.cutover')}</option>
           </select>
         </Filter>
         <Filter label={t('approvals.filter.project')}>
@@ -115,6 +143,7 @@ export function ApprovalsPage() {
           <thead>
             <tr>
               <Th>{t('approvals.col.snapshot')}</Th>
+              <Th>{t('versions.col.type')}</Th>
               <Th>{t('approvals.col.project')}</Th>
               <Th>{t('approvals.col.status')}</Th>
               <Th>{t('approvals.col.creator')}</Th>
@@ -124,7 +153,7 @@ export function ApprovalsPage() {
           </thead>
           <tbody>
             {snapshots.length === 0 ? (
-              <tr><td colSpan={6} style={styles.emptyRow}>{t('approvals.empty')}</td></tr>
+              <tr><td colSpan={7} style={styles.emptyRow}>{t('approvals.empty')}</td></tr>
             ) : (
               snapshots.map((s, i) => {
                 const proj = siteProjects.find((p) => p.id === s.projectId);
@@ -133,7 +162,7 @@ export function ApprovalsPage() {
                 if (approveId === s.id) {
                   return (
                     <tr key={s.id} style={{ background: 'var(--green-50)', borderBottom: '1px solid var(--border)' }}>
-                      <td colSpan={6} style={styles.confirmCell}>
+                      <td colSpan={7} style={styles.confirmCell}>
                         <div style={styles.confirmBar}>
                           <span style={styles.confirmText}>
                             {t('versions.confirmApprovePre')}<b>{s.name}</b>{t('versions.confirmApprovePost')}
@@ -150,7 +179,7 @@ export function ApprovalsPage() {
                 if (rejectId === s.id) {
                   return (
                     <tr key={s.id} style={{ background: 'var(--red-50)', borderBottom: '1px solid var(--border)' }}>
-                      <td colSpan={6} style={styles.confirmCell}>
+                      <td colSpan={7} style={styles.confirmCell}>
                         <div style={styles.rejectBar}>
                           <div style={styles.rejectLabel}>{t('versions.rejectReasonLabel')} · <b>{s.name}</b></div>
                           <textarea
@@ -184,6 +213,11 @@ export function ApprovalsPage() {
                     <td style={styles.td}>
                       <div style={styles.nameMain}>{s.name}</div>
                       {s.description && <div style={styles.nameDesc}>{s.description}</div>}
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ ...styles.typeBadge, ...((s.type ?? 'mapping') === 'cutover' ? styles.typeCutover : styles.typeMapping) }}>
+                        {(s.type ?? 'mapping') === 'cutover' ? 'Cutover' : 'Mapping'}
+                      </span>
                     </td>
                     <td style={{ ...styles.td, fontSize: 11.5, color: 'var(--text-2)' }}>
                       {proj?.name ?? '—'}
@@ -270,6 +304,12 @@ function Filter({ label, children }: { label: string; children: React.ReactNode 
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  typeBadge: {
+    display: 'inline-block', padding: '2px 7px', fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)',
+    border: '1px solid', borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.3,
+  },
+  typeMapping: { background: 'var(--navy-50)', color: 'var(--navy)', borderColor: 'var(--navy)' },
+  typeCutover: { background: 'var(--red-50)', color: 'var(--red)', borderColor: 'var(--red)' },
   header: { marginBottom: 14 },
   h1: { margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text)', letterSpacing: -0.2 },
   subtitle: { margin: '4px 0 0', fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--mono)' },

@@ -25,8 +25,10 @@ interface AuthState {
   token: string | null;
   user: AuthUser | null;
   expiresAt: string | null;
+  lastSignInAt: string | null;
+  loginAt: string | null;
 
-  setAuth: (token: string, user: AuthUser, expiresAt: string) => void;
+  setAuth: (token: string, user: AuthUser, expiresAt: string, lastSignInAt: string | null) => void;
   logout: () => void;
   isAuthenticated: () => boolean;
   hasRole: (...roles: UserRole[]) => boolean;
@@ -43,11 +45,13 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       expiresAt: null,
+      lastSignInAt: null,
+      loginAt: null,
 
-      setAuth: (token, user, expiresAt) =>
-        set({ token, user, expiresAt }),
+      setAuth: (token, user, expiresAt, lastSignInAt) =>
+        set({ token, user, expiresAt, lastSignInAt, loginAt: new Date().toISOString() }),
 
-      logout: () => set({ token: null, user: null, expiresAt: null }),
+      logout: () => set({ token: null, user: null, expiresAt: null, lastSignInAt: null, loginAt: null }),
 
       isAuthenticated: () => {
         const { token, expiresAt } = get();

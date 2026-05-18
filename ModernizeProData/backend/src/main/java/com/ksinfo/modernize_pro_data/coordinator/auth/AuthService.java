@@ -24,7 +24,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
-    public record LoginResult(String token, String username, String role, OffsetDateTime expiresAt) {}
+    public record LoginResult(String token, String username, String role,
+                              OffsetDateTime expiresAt, OffsetDateTime lastSignInAt) {}
 
     @Transactional
     public LoginResult login(String username, String password) {
@@ -41,6 +42,8 @@ public class AuthService {
                     HttpStatus.UNAUTHORIZED);
         }
 
+        // 이전 로그인 시각 캡처 후 갱신
+        OffsetDateTime prevSignIn = user.getLastSignInAt();
         user.setLastSignInAt(OffsetDateTime.now());
         userRepository.save(user);
 
@@ -49,6 +52,6 @@ public class AuthService {
         OffsetDateTime expiresAt = jwtService.expirationOf(token);
 
         log.info("Login OK: {} ({})", user.getUsername(), role);
-        return new LoginResult(token, user.getUsername(), role, expiresAt);
+        return new LoginResult(token, user.getUsername(), role, expiresAt, prevSignIn);
     }
 }

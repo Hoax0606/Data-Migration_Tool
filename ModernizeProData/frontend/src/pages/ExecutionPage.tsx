@@ -1,11 +1,10 @@
 import { useMemo } from 'react';
 import { useWorkspaceStore } from '../store/workspace';
-import { useSnapshotsStore } from '../store/snapshots';
 import { useT } from '../i18n';
 
 /**
- * Execution tab (project level) — 현재 프로젝트의 cutover 상태 read-only.
- * cutover 시작·중단·완료 액션은 All Projects → Cutover 탭 (Coordinator) 에서 관리.
+ * Execution tab (project level) — 현재 프로젝트의 실행 상태 read-only.
+ * test / rehearsal / cutover 각 단계의 상태를 표시.
  */
 export function ExecutionPage() {
   const t = useT();
@@ -15,7 +14,6 @@ export function ExecutionPage() {
     () => projects.find((p) => p.id === activeProjectId) ?? null,
     [projects, activeProjectId],
   );
-  const allSnapshots = useSnapshotsStore((s) => s.snapshots);
 
   if (!project) {
     return (
@@ -31,9 +29,6 @@ export function ExecutionPage() {
     );
   }
 
-  const cutover = project.cutover;
-  const snapshot = cutover?.snapshotId ? allSnapshots.find((s) => s.id === cutover.snapshotId) : undefined;
-
   return (
     <div>
       <div style={styles.header}>
@@ -44,16 +39,34 @@ export function ExecutionPage() {
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <div>
-            <div style={styles.cardTitle}>{t('execution.cutover.title')}</div>
-            <div style={styles.cardDesc}>{t('execution.cutover.desc')}</div>
+            <div style={styles.cardTitle}>{t('execution.phaseStatus')}</div>
           </div>
           <span style={styles.phaseTag}>{project.phase}</span>
+          {project.runStatus && project.runStatus !== 'idle' && (
+            <span style={{
+              ...styles.runTag,
+              ...(project.runStatus === 'running' ? styles.runTagRunning : styles.runTagCompleted),
+            }}>
+              {project.runStatus}
+            </span>
+          )}
         </div>
 
         <div style={styles.cardBody}>
-          {/* phase-별 read-only 안내 */}
+          {(project.phase === 'planning' || project.phase === 'analysis') && (
+            <div style={styles.bodyDescMuted}>{t('execution.notAtExecution')}</div>
+          )}
+          {project.phase === 'test' && (
+            <div style={styles.bodyDesc}>{t('execution.test.title')}</div>
+          )}
+          {project.phase === 'sign-off' && (
+            <div style={styles.bodyDescMuted}>{t('execution.signoff.title')}</div>
+          )}
           {project.phase === 'rehearsal' && (
-            <div style={styles.bodyDesc}>{t('execution.cutover.ready.title')}</div>
+            <div style={styles.bodyDesc}>{t('execution.rehearsal.title')}</div>
+          )}
+          {project.phase === 'ready' && (
+            <div style={styles.bodyDesc}>{t('execution.ready.title')}</div>
           )}
           {project.phase === 'cutover' && (
             <div style={styles.bodyDesc}>{t('execution.cutover.running.title')}</div>
@@ -67,42 +80,6 @@ export function ExecutionPage() {
           {project.phase === 'done' && (
             <div style={styles.bodyDesc}>{t('execution.cutover.done.title')}</div>
           )}
-          {(project.phase === 'planning' || project.phase === 'analysis' || project.phase === 'sign-off') && (
-            <div style={styles.bodyDescMuted}>
-              {t('execution.cutover.notReady')} · {t('execution.cutover.currentPhase', { phase: project.phase })}
-            </div>
-          )}
-
-          {/* 메타 정보 */}
-          {snapshot && (
-            <div style={styles.metaLine}>
-              {t('execution.cutover.snapshot')}: <b>{snapshot.name}</b>
-            </div>
-          )}
-          {cutover?.startedAt && (
-            <div style={styles.metaLine}>
-              {t('execution.cutover.startedBy', { who: cutover.startedBy ?? '—', when: new Date(cutover.startedAt).toLocaleString() })}
-            </div>
-          )}
-          {cutover?.finishedAt && (
-            <div style={styles.metaLine}>
-              {t('execution.cutover.finishedBy', { who: cutover.finishedBy ?? '—', when: new Date(cutover.finishedAt).toLocaleString() })}
-            </div>
-          )}
-          {cutover?.abortedAt && (!cutover.startedAt || new Date(cutover.abortedAt) > new Date(cutover.startedAt)) && (
-            <div style={styles.abortBox}>
-              <div>
-                {t('execution.cutover.lastAbort', { who: cutover.abortedBy ?? '—', when: new Date(cutover.abortedAt).toLocaleString() })}
-              </div>
-              {cutover.abortReason && (
-                <div style={styles.abortReasonNote}>
-                  {t('execution.cutover.lastAbortReason', { reason: cutover.abortReason })}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div style={styles.movedHint}>{t('execution.cutover.movedToSite')}</div>
         </div>
       </section>
     </div>
@@ -120,10 +97,9 @@ const styles: Record<string, React.CSSProperties> = {
   cardHeader: {
     padding: '12px 16px',
     borderBottom: '1px solid var(--border)',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+    display: 'flex', alignItems: 'center', gap: 12,
   },
-  cardTitle: { fontSize: 13, fontWeight: 700, color: 'var(--text)' },
-  cardDesc: { fontSize: 11.5, color: 'var(--text-3)', marginTop: 3, lineHeight: 1.5 },
+  cardTitle: { fontSize: 13, fontWeight: 700, color: 'var(--text)', flex: 1 },
   cardBody: { padding: '14px 16px' },
 
   phaseTag: {
@@ -131,31 +107,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--panel-2)', color: 'var(--text-2)', border: '1px solid var(--border-strong)',
     borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap',
   },
+  runTag: {
+    padding: '2px 8px', fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)',
+    borderRadius: 3, textTransform: 'uppercase', letterSpacing: 0.3, whiteSpace: 'nowrap',
+  },
+  runTagRunning: { background: 'var(--amber-50)', color: 'var(--amber)', border: '1px solid var(--amber)' },
+  runTagCompleted: { background: 'var(--phase-done-50)', color: 'var(--phase-done)', border: '1px solid var(--phase-done)' },
 
   bodyDesc:       { fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8 },
   bodyDescSub:    { fontSize: 12, color: 'var(--text-2)', marginBottom: 8, lineHeight: 1.5 },
   bodyDescMuted:  { fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--mono)', marginBottom: 8 },
-  metaLine:       { fontSize: 11.5, color: 'var(--text-2)', fontFamily: 'var(--mono)', marginBottom: 4 },
-  abortBox: {
-    marginTop: 8,
-    padding: '8px 11px',
-    background: 'var(--red-50)',
-    border: '1px solid var(--red)',
-    borderRadius: 4,
-    fontSize: 11.5,
-    color: 'var(--red)',
-    fontFamily: 'var(--mono)',
-  },
-  abortReasonNote: { fontSize: 11, color: 'var(--text-2)', marginTop: 4, fontFamily: 'var(--mono)', fontStyle: 'italic' },
-
-  movedHint: {
-    marginTop: 14,
-    padding: '8px 11px',
-    fontSize: 11.5,
-    color: 'var(--navy)',
-    fontFamily: 'var(--mono)',
-    background: 'var(--navy-50)',
-    border: '1px solid var(--navy)',
-    borderRadius: 4,
-  },
 };

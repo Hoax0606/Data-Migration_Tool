@@ -1,20 +1,25 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { siteApi, projectApi } from '../api/workspace';
 
 export type ProjectPhase =
   | 'planning'
   | 'analysis'
+  | 'test'
   | 'sign-off'
   | 'rehearsal'
+  | 'ready'
   | 'cutover'
   | 'hypercare'
   | 'done';
+
+export type RunStatus = 'idle' | 'running' | 'completed';
 
 export type SiteEnv = 'mainframe' | 'midrange' | 'cloud' | 'on-prem' | 'other';
 export type SourceEncoding = 'shift_jis' | 'euc-jp' | 'utf-8' | 'ebcdic';
 export type ProjectEnvironment = 'test' | 'dev' | 'staging' | 'production';
 
-export const PROJECT_ENVIRONMENTS: ProjectEnvironment[] = ['test', 'dev', 'staging', 'production'];
+export const PROJECT_ENVIRONMENTS: ProjectEnvironment[] = ['dev', 'test', 'staging', 'production'];
 
 export interface SiteDbConnection {
   type: string;     // 'PostgreSQL' | 'Oracle' | ...
@@ -48,6 +53,7 @@ export interface Site {
    * - Worker 는 read-only, Coordinator(master) 만 해제 가능.
    */
   tobeDbLocks: TobeDbLocks;
+  createdBy?: string;
   createdAt: string;
 }
 
@@ -83,6 +89,8 @@ export interface Project {
   assignee?: string;
   /** cutover 실행 메타 (시작·중단·완료 누가 언제). Coordinator 만 수정. */
   cutover?: CutoverMeta;
+  /** 실행 단계(test/rehearsal/cutover)의 sub-status. phase 전환 시 idle 로 초기화. */
+  runStatus?: RunStatus;
   createdAt: string;
 }
 
@@ -91,34 +99,37 @@ interface WorkspaceState {
   projects: Project[];
   activeSiteId: string | null;
   activeProjectId: string | null;
+  loading: boolean;
 
   /* getters */
   getActiveSite: () => Site | null;
   getActiveProject: () => Project | null;
   getProjectsForActiveSite: () => Project[];
 
-  /* mutations */
-  createSite: (data: Omit<Site, 'id' | 'createdAt'>) => Site;
-  updateSite: (id: string, patch: Partial<Omit<Site, 'id' | 'createdAt'>>) => void;
-  createProject: (data: Omit<Project, 'id' | 'siteId' | 'createdAt'>) => Project;
+  /* server sync */
+  fetchSites: () => Promise<void>;
+  fetchProjects: (siteId: string) => Promise<void>;
+
+  /* mutations — all call backend, then update local state */
+  createSite: (data: Omit<Site, 'id' | 'createdAt' | 'createdBy'>) => Promise<Site>;
+  updateSite: (id: string, patch: Partial<Omit<Site, 'id' | 'createdAt'>>) => Promise<void>;
+  createProject: (data: Omit<Project, 'id' | 'siteId' | 'createdAt'>) => Promise<Project>;
   setActiveSite: (id: string | null) => void;
   setActiveProject: (id: string | null) => void;
-  deleteProject: (id: string) => void;
-  deleteSite: (id: string) => void;
+  deleteProject: (id: string) => Promise<void>;
+  deleteSite: (id: string) => Promise<void>;
   addDdlFiles: (projectId: string, files: DdlFile[]) => void;
   removeDdlFile: (projectId: string, fileName: string) => void;
 
   /** cutover 상태 전환 (Coordinator 전용 — UI 측에서 게이트) */
-  startCutover: (projectId: string, snapshotId: string, by: string) => void;
-  abortCutover: (projectId: string, reason: string, by: string) => void;
-  finishCutover: (projectId: string, by: string) => void;
+  startCutover: (projectId: string, snapshotId: string, by: string) => Promise<void>;
+  abortCutover: (projectId: string, reason: string, by: string) => Promise<void>;
+  finishCutover: (projectId: string, by: string) => Promise<void>;
   /** cutover 담당자 지정 (Coordinator 전용). undefined = 미배정 */
-  assignCutover: (projectId: string, assignee: string | undefined) => void;
+  assignCutover: (projectId: string, assignee: string | undefined) => Promise<void>;
   /** Project 단위 담당자 지정. undefined = 미배정. */
-  setProjectAssignee: (projectId: string, assignee: string | undefined) => void;
+  setProjectAssignee: (projectId: string, assignee: string | undefined) => Promise<void>;
 }
-
-const newId = () => 's' + Math.random().toString(36).slice(2, 9);
 
 export const emptyDbConnection = (): SiteDbConnection => ({
   type: '',
@@ -131,9 +142,8 @@ export const emptyDbConnection = (): SiteDbConnection => ({
 
 /**
  * 사이트·프로젝트 관리 store.
- * 현재는 frontend localStorage 만 사용 — 추후 백엔드 API 로 교체.
- *
- * v7 (2026-05): Site 에 environment + tobeDbByEnv 도입. Project 에서 environment 제거.
+ * 백엔드 API 로 CRUD 후 로컬 상태 반영.
+ * activeSiteId / activeProjectId 만 localStorage 에 영속.
  */
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
@@ -142,6 +152,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       projects: [],
       activeSiteId: null,
       activeProjectId: null,
+      loading: false,
 
       getActiveSite: () => {
         const { sites, activeSiteId } = get();
@@ -156,30 +167,64 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return projects.filter((p) => p.siteId === activeSiteId);
       },
 
-      createSite: (data) => {
-        const site: Site = {
-          id: newId(),
-          createdAt: new Date().toISOString(),
-          ...data,
-        };
+      /* ── Server sync ─────────────────────────────── */
+
+      fetchSites: async () => {
+        set({ loading: true });
+        try {
+          const sites = await siteApi.list();
+          const { activeSiteId } = get();
+          const stillValid = activeSiteId && sites.some((s) => s.id === activeSiteId);
+          set({
+            sites,
+            activeSiteId: stillValid ? activeSiteId : (sites[0]?.id ?? null),
+          });
+        } catch (e) {
+          console.error('[workspace] fetchSites failed:', e);
+        } finally {
+          set({ loading: false });
+        }
+      },
+
+      fetchProjects: async (siteId: string) => {
+        try {
+          const projects = await projectApi.listBySite(siteId);
+          set((s) => ({
+            projects: [
+              ...s.projects.filter((p) => p.siteId !== siteId),
+              ...projects,
+            ],
+          }));
+        } catch (e) {
+          console.error('[workspace] fetchProjects failed:', e);
+        }
+      },
+
+      /* ── Mutations ───────────────────────────────── */
+
+      createSite: async (data) => {
+        const site = await siteApi.create(data);
         set((s) => ({ sites: [...s.sites, site], activeSiteId: site.id }));
         return site;
       },
 
-      updateSite: (id, patch) =>
+      updateSite: async (id, patch) => {
+        const updated = await siteApi.update(id, patch);
         set((s) => ({
-          sites: s.sites.map((site) => (site.id === id ? { ...site, ...patch } : site)),
-        })),
+          sites: s.sites.map((site) => (site.id === id ? updated : site)),
+        }));
+      },
 
-      createProject: (data) => {
+      createProject: async (data) => {
         const { activeSiteId } = get();
         if (!activeSiteId) throw new Error('No active site');
-        const project: Project = {
-          id: newId(),
-          siteId: activeSiteId,
-          createdAt: new Date().toISOString(),
-          ...data,
-        };
+        const project = await projectApi.create(activeSiteId, {
+          name: data.name,
+          phase: data.phase,
+          tableCount: data.tableCount,
+          ddlFiles: data.ddlFiles,
+          assignee: data.assignee,
+        });
         set((s) => ({
           projects: [...s.projects, project],
           activeProjectId: project.id,
@@ -190,175 +235,131 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setActiveSite: (id) => set({ activeSiteId: id, activeProjectId: null }),
       setActiveProject: (id) => set({ activeProjectId: id }),
 
-      deleteProject: (id) =>
+      deleteProject: async (id) => {
+        await projectApi.delete(id);
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
           activeProjectId: s.activeProjectId === id ? null : s.activeProjectId,
-        })),
+        }));
+      },
 
-      deleteSite: (id) =>
-        set((s) => ({
-          sites: s.sites.filter((x) => x.id !== id),
-          projects: s.projects.filter((p) => p.siteId !== id),
-          activeSiteId: s.activeSiteId === id ? null : s.activeSiteId,
-          activeProjectId: null,
-        })),
+      deleteSite: async (id) => {
+        await siteApi.delete(id);
+        set((s) => {
+          const remaining = s.sites.filter((x) => x.id !== id);
+          const needSwitch = s.activeSiteId === id;
+          return {
+            sites: remaining,
+            projects: s.projects.filter((p) => p.siteId !== id),
+            activeSiteId: needSwitch ? (remaining[0]?.id ?? null) : s.activeSiteId,
+            activeProjectId: null,
+          };
+        });
+      },
 
-      addDdlFiles: (projectId, files) =>
-        set((s) => ({
-          projects: s.projects.map((p) => {
-            if (p.id !== projectId) return p;
-            // 같은 이름은 새 항목으로 덮어쓰기 (재업로드)
-            const existing = p.ddlFiles.filter((f) => !files.some((nf) => nf.name === f.name));
-            return { ...p, ddlFiles: [...existing, ...files] };
-          }),
-        })),
-
-      removeDdlFile: (projectId, fileName) =>
-        set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === projectId ? { ...p, ddlFiles: p.ddlFiles.filter((f) => f.name !== fileName) } : p,
-          ),
-        })),
-
-      startCutover: (projectId, snapshotId, by) =>
+      addDdlFiles: (projectId, files) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        if (!project) return;
+        const existing = project.ddlFiles.filter((f) => !files.some((nf) => nf.name === f.name));
+        const updated = [...existing, ...files];
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === projectId
-              ? {
-                  ...p,
-                  phase: 'cutover',
-                  cutover: {
-                    snapshotId,
-                    startedAt: new Date().toISOString(),
-                    startedBy: by,
-                  },
-                }
-              : p,
+            p.id === projectId ? { ...p, ddlFiles: updated } : p
           ),
-        })),
+        }));
+        projectApi.update(projectId, { ddlFiles: updated as unknown as DdlFile[] }).catch(() => {});
+      },
 
-      abortCutover: (projectId, reason, by) =>
+      removeDdlFile: (projectId, fileName) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        if (!project) return;
+        const updated = project.ddlFiles.filter((f) => f.name !== fileName);
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === projectId
-              ? {
-                  ...p,
-                  phase: 'rehearsal',
-                  cutover: {
-                    ...(p.cutover ?? {}),
-                    abortedAt: new Date().toISOString(),
-                    abortedBy: by,
-                    abortReason: reason,
-                  },
-                }
-              : p,
+            p.id === projectId ? { ...p, ddlFiles: updated } : p
           ),
-        })),
+        }));
+        projectApi.update(projectId, { ddlFiles: updated as unknown as DdlFile[] }).catch(() => {});
+      },
 
-      finishCutover: (projectId, by) =>
+      startCutover: async (projectId, snapshotId, by) => {
+        // Cutover 는 production stage 에서만 실행 가능
+        const site = get().sites.find((s) => s.id === get().activeSiteId);
+        if (site?.environment !== 'production') {
+          throw new Error('Cutover can only run in production stage');
+        }
+        const cutover = {
+          snapshotId,
+          startedAt: new Date().toISOString(),
+          startedBy: by,
+        };
+        await projectApi.update(projectId, { phase: 'cutover', cutover, runStatus: 'running' });
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === projectId
-              ? {
-                  ...p,
-                  phase: 'hypercare',
-                  cutover: {
-                    ...(p.cutover ?? {}),
-                    finishedAt: new Date().toISOString(),
-                    finishedBy: by,
-                  },
-                }
-              : p,
+            p.id === projectId ? { ...p, phase: 'cutover' as const, cutover, runStatus: 'running' as const } : p
           ),
-        })),
+        }));
+      },
 
-      assignCutover: (projectId, assignee) =>
+      abortCutover: async (projectId, reason, by) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        const cutover = {
+          ...(project?.cutover ?? {}),
+          abortedAt: new Date().toISOString(),
+          abortedBy: by,
+          abortReason: reason,
+        };
+        await projectApi.update(projectId, { phase: 'ready', cutover, runStatus: 'idle' });
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === projectId
-              ? { ...p, cutover: { ...(p.cutover ?? {}), assignee: assignee || undefined } }
-              : p,
+            p.id === projectId ? { ...p, phase: 'ready' as const, cutover, runStatus: 'idle' as const } : p
           ),
-        })),
+        }));
+      },
 
-      setProjectAssignee: (projectId, assignee) =>
+      finishCutover: async (projectId, by) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        const cutover = {
+          ...(project?.cutover ?? {}),
+          finishedAt: new Date().toISOString(),
+          finishedBy: by,
+        };
+        await projectApi.update(projectId, { phase: 'hypercare', cutover, runStatus: 'idle' });
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === projectId ? { ...p, assignee: assignee || undefined } : p,
+            p.id === projectId ? { ...p, phase: 'hypercare' as const, cutover, runStatus: undefined } : p
           ),
-        })),
+        }));
+      },
+
+      assignCutover: async (projectId, assignee) => {
+        const project = get().projects.find((p) => p.id === projectId);
+        const cutover = { ...(project?.cutover ?? {}), assignee: assignee || undefined };
+        await projectApi.update(projectId, { cutover });
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === projectId ? { ...p, cutover } : p
+          ),
+        }));
+      },
+
+      setProjectAssignee: async (projectId, assignee) => {
+        await projectApi.update(projectId, { assignee: assignee || undefined });
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === projectId ? { ...p, assignee: assignee || undefined } : p
+          ),
+        }));
+      },
     }),
     {
       name: 'modernize-workspace',
-      version: 8,
-      migrate: (persisted, version) => {
-        const state = persisted as { sites?: unknown[]; projects?: unknown[] } & Record<string, unknown>;
-
-        if (version < 8 && Array.isArray(state.sites)) {
-          state.sites = state.sites.map((raw) => {
-            const s = raw as Omit<Partial<Site>, 'environment' | 'tobeDbByEnv'> & {
-              environment?: string;
-              encoding?: SourceEncoding;
-              tobeDb?: SiteDbConnection;
-              tobeDbByEnv?: TobeDbByEnv;
-              tobeDbLocks?: TobeDbLocks;
-            };
-            const tobeFallback: SiteEnv = (s.environment === 'cloud' || s.environment === 'on-prem')
-              ? (s.environment as SiteEnv)
-              : 'on-prem';
-            const legacyEnc: SourceEncoding = s.encoding ?? 'shift_jis';
-
-            const isProjEnv = (e: unknown): e is ProjectEnvironment =>
-              e === 'test' || e === 'dev' || e === 'staging' || e === 'production';
-            const projectEnv: ProjectEnvironment = isProjEnv(s.environment) ? s.environment : 'dev';
-
-            // v6 → v7: single tobeDb 를 tobeDbByEnv[projectEnv] 로 이전.
-            const byEnv: TobeDbByEnv = s.tobeDbByEnv ?? {};
-            if (s.tobeDb && !byEnv[projectEnv]) byEnv[projectEnv] = s.tobeDb;
-
-            // v8: 기존에 저장된 단계는 잠금 처리.
-            const locks: TobeDbLocks = s.tobeDbLocks ?? {};
-            for (const env of ['test', 'dev', 'staging', 'production'] as ProjectEnvironment[]) {
-              if (byEnv[env] && locks[env] === undefined) locks[env] = true;
-            }
-
-            return {
-              id: s.id ?? newId(),
-              name: s.name ?? 'Untitled',
-              asisEnv: s.asisEnv ?? 'mainframe',
-              tobeEnv: s.tobeEnv ?? tobeFallback,
-              asisEncoding: s.asisEncoding ?? legacyEnc,
-              tobeEncoding: s.tobeEncoding ?? 'utf-8',
-              csvPath: s.csvPath ?? '',
-              notes: s.notes,
-              environment: projectEnv,
-              tobeDbByEnv: byEnv,
-              tobeDbLocks: locks,
-              createdAt: s.createdAt ?? new Date().toISOString(),
-            } satisfies Site;
-          });
-        }
-
-        if (version < 8 && Array.isArray(state.projects)) {
-          state.projects = state.projects.map((raw) => {
-            const p = raw as Partial<Project> & { src?: string; tgt?: string; environment?: string };
-            return {
-              id: p.id ?? newId(),
-              siteId: p.siteId ?? '',
-              name: p.name ?? 'Untitled',
-              phase: p.phase ?? 'planning',
-              // environment 제거 — 이제 site 레벨
-              tableCount: p.tableCount ?? 0,
-              ddlFiles: p.ddlFiles ?? [],
-              owner: p.owner ?? '—',
-              createdAt: p.createdAt ?? new Date().toISOString(),
-            } satisfies Project;
-          });
-        }
-
-        return state as unknown as WorkspaceState;
-      },
+      version: 10,
+      // v9: 서버 연동 전환. localStorage 에는 activeSiteId / activeProjectId 만 영속.
+      partialize: (state) => ({
+        activeSiteId: state.activeSiteId,
+        activeProjectId: state.activeProjectId,
+      }),
     },
   ),
 );

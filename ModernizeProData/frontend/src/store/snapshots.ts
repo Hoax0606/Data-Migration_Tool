@@ -1,21 +1,20 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { snapshotApi } from '../api/workspace';
 
-export type SnapshotStatus = 'pending' | 'approved' | 'rejected';
+export type SnapshotStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+export type SnapshotType = 'mapping' | 'cutover';
 
 export interface MappingSnapshot {
   id: string;
   projectId: string;
   name: string;
   description?: string;
+  type: SnapshotType;
   status: SnapshotStatus;
-  /** 작성자 username (Worker 또는 Coordinator) */
   createdBy: string;
   createdAt: string;
-  /** Coordinator 승인 정보 (status === 'approved') */
   approvedBy?: string;
   approvedAt?: string;
-  /** Coordinator 거부 정보 (status === 'rejected') */
   rejectedBy?: string;
   rejectedAt?: string;
   rejectionReason?: string;
@@ -26,59 +25,81 @@ export interface MappingSnapshot {
 interface SnapshotsState {
   snapshots: MappingSnapshot[];
 
-  createSnapshot: (data: Pick<MappingSnapshot, 'projectId' | 'name' | 'createdBy'> & Partial<Pick<MappingSnapshot, 'description' | 'tableCount' | 'ruleCount'>>) => MappingSnapshot;
-  approveSnapshot: (id: string, approver: string) => void;
-  rejectSnapshot: (id: string, approver: string, reason: string) => void;
-  deleteSnapshot: (id: string) => void;
+  fetchByProject: (projectId: string) => Promise<void>;
+  fetchBySite: (siteId: string) => Promise<void>;
+  createSnapshot: (projectId: string, data: { name: string; description?: string; type?: string; tableCount: number; ruleCount: number }) => Promise<MappingSnapshot>;
+  requestSnapshot: (id: string) => Promise<void>;
+  approveSnapshot: (id: string) => Promise<void>;
+  rejectSnapshot: (id: string, reason: string) => Promise<void>;
+  deleteSnapshot: (id: string) => Promise<void>;
 }
 
-const newId = () => 'ss' + Math.random().toString(36).slice(2, 9);
-
 /**
- * 매핑 스냅샷 store.
- * 신규 스냅샷은 pending 상태로 생성 → Coordinator 가 approve / reject.
+ * 매핑 스냅샷 store — 백엔드 API 연동.
+ * 모든 팀원이 동일 데이터를 공유.
  */
 export const useSnapshotsStore = create<SnapshotsState>()(
-  persist(
-    (set) => ({
-      snapshots: [],
+  (set, get) => ({
+    snapshots: [],
 
-      createSnapshot: (data) => {
-        const s: MappingSnapshot = {
-          id: newId(),
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          tableCount: data.tableCount ?? 0,
-          ruleCount: data.ruleCount ?? 0,
-          ...data,
-        };
-        set((st) => ({ snapshots: [...st.snapshots, s] }));
-        return s;
-      },
-
-      approveSnapshot: (id, approver) =>
+    fetchByProject: async (projectId) => {
+      try {
+        const list = await snapshotApi.listByProject(projectId);
         set((st) => ({
-          snapshots: st.snapshots.map((s) =>
-            s.id === id
-              ? { ...s, status: 'approved' as const, approvedBy: approver, approvedAt: new Date().toISOString() }
-              : s,
-          ),
-        })),
+          snapshots: [
+            ...st.snapshots.filter((s) => s.projectId !== projectId),
+            ...list,
+          ],
+        }));
+      } catch { /* polling에서 재시도 */ }
+    },
 
-      rejectSnapshot: (id, approver, reason) =>
+    fetchBySite: async (siteId) => {
+      try {
+        const list = await snapshotApi.listBySite(siteId);
+        // 사이트 내 모든 프로젝트의 스냅샷 교체
+        const projectIds = new Set(list.map((s) => s.projectId));
         set((st) => ({
-          snapshots: st.snapshots.map((s) =>
-            s.id === id
-              ? { ...s, status: 'rejected' as const, rejectedBy: approver, rejectedAt: new Date().toISOString(), rejectionReason: reason }
-              : s,
-          ),
-        })),
+          snapshots: [
+            ...st.snapshots.filter((s) => !projectIds.has(s.projectId)),
+            ...list,
+          ],
+        }));
+      } catch { /* polling에서 재시도 */ }
+    },
 
-      deleteSnapshot: (id) =>
-        set((st) => ({
-          snapshots: st.snapshots.filter((s) => s.id !== id),
-        })),
-    }),
-    { name: 'modernize-snapshots', version: 1 },
-  ),
+    createSnapshot: async (projectId, data) => {
+      const s = await snapshotApi.create(projectId, data);
+      set((st) => ({ snapshots: [...st.snapshots, s] }));
+      return s;
+    },
+
+    requestSnapshot: async (id) => {
+      const updated = await snapshotApi.request(id);
+      set((st) => ({
+        snapshots: st.snapshots.map((s) => s.id === id ? updated : s),
+      }));
+    },
+
+    approveSnapshot: async (id) => {
+      const updated = await snapshotApi.approve(id);
+      set((st) => ({
+        snapshots: st.snapshots.map((s) => s.id === id ? updated : s),
+      }));
+    },
+
+    rejectSnapshot: async (id, reason) => {
+      const updated = await snapshotApi.reject(id, reason);
+      set((st) => ({
+        snapshots: st.snapshots.map((s) => s.id === id ? updated : s),
+      }));
+    },
+
+    deleteSnapshot: async (id) => {
+      await snapshotApi.delete(id);
+      set((st) => ({
+        snapshots: st.snapshots.filter((s) => s.id !== id),
+      }));
+    },
+  }),
 );

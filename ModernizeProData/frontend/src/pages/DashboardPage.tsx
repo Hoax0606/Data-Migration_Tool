@@ -319,7 +319,7 @@ function Kv({ k, v, mono, badge }: { k: string; v: string; mono?: boolean; badge
 
 /* ─── Site overview: All projects (사이트 선택, 프로젝트 미선택) ── */
 
-const PHASES: Project['phase'][] = ['planning', 'analysis', 'sign-off', 'rehearsal', 'cutover', 'hypercare', 'done'];
+const PHASES: Project['phase'][] = ['planning', 'analysis', 'test', 'sign-off', 'rehearsal', 'ready', 'cutover', 'hypercare', 'done'];
 
 function SiteOverview({ siteName, projects }: { siteName: string; projects: Project[] }) {
   const t = useT();
@@ -449,7 +449,7 @@ function SiteOverview({ siteName, projects }: { siteName: string; projects: Proj
                           <span style={{ fontWeight: 500, marginLeft: 7 }}>{p.name}</span>
                         </td>
                         <td style={styles.td}>
-                          <span style={{ ...styles.phaseChip, ...phaseChipColor(p.phase) }}>{p.phase}</span>
+                          <span style={{ ...styles.phaseChip, ...phaseChipColor(p.phase, p.runStatus) }}>{p.phase}</span>
                         </td>
                         <td style={styles.td} onClick={(e) => e.stopPropagation()}>
                           {isMaster ? (
@@ -543,7 +543,7 @@ function PhaseList({ counts, total }: { counts: Record<string, number>; total: n
         <div key={ph} style={styles.mixRow}>
           <span style={{ ...styles.phaseChip, ...phaseChipColor(ph) }}>{ph}</span>
           <div style={styles.mixBarOuter}>
-            <div style={{ ...styles.mixBarInner, width: `${(n / total) * 100}%`, background: `var(--phase-${phaseSlug(ph)})` }} />
+            <div style={{ ...styles.mixBarInner, width: `${total > 0 ? (n / total) * 100 : 0}%`, background: `var(--phase-${phaseSlug(ph)})` }} />
           </div>
           <span style={styles.mixCount}>{n}</span>
         </div>
@@ -577,8 +577,10 @@ function phaseSlug(phase: string): string {
   const slugMap: Record<string, string> = {
     'planning':  'planning',
     'analysis':  'analysis',
+    'test':      'test',
     'rehearsal': 'rehearsal',
     'sign-off':  'signoff',
+    'ready':     'ready',
     'cutover':   'cutover',
     'hypercare': 'hypercare',
     'done':      'done',
@@ -590,17 +592,15 @@ function statusDotColor(phase: string): React.CSSProperties {
   return { background: `var(--phase-${phaseSlug(phase)})` };
 }
 
-function phaseChipColor(phase: string): React.CSSProperties {
-  const slugMap: Record<string, string> = {
-    'planning':  'planning',
-    'analysis':  'analysis',
-    'rehearsal': 'rehearsal',
-    'sign-off':  'signoff',
-    'cutover':   'cutover',
-    'hypercare': 'hypercare',
-    'done':      'done',
-  };
-  const slug = slugMap[phase] ?? 'done';
+function phaseChipColor(phase: string, runStatus?: string): React.CSSProperties {
+  if (runStatus === 'completed' && (phase === 'test' || phase === 'rehearsal')) {
+    return {
+      background: 'var(--panel)',
+      color:      'var(--text)',
+      borderColor:'var(--border-strong)',
+    };
+  }
+  const slug = phaseSlug(phase);
   return {
     background: `var(--phase-${slug}-50)`,
     color:      `var(--phase-${slug})`,
@@ -1015,7 +1015,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginBottom: 5,
   },
-  mixLabel: { fontSize: 11, color: 'var(--text-2)', fontFamily: 'var(--mono)', minWidth: 72 },
+  mixLabel: { fontSize: 11, color: 'var(--text)', fontWeight: 500, fontFamily: 'var(--mono)', width: 72, flexShrink: 0 },
   mixBarOuter: { flex: 1, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' },
   mixBarInner: { height: '100%' },
   mixCount: { fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-3)', width: 22, textAlign: 'right' },
@@ -1042,15 +1042,18 @@ const styles: Record<string, React.CSSProperties> = {
   phaseChip: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 4,
-    padding: '1px 7px',
-    fontSize: 10.5,
+    justifyContent: 'center',
+    width: 72,
+    padding: '2px 0',
+    fontSize: 10,
     fontWeight: 600,
     fontFamily: 'var(--mono)',
     border: '1px solid',
     borderRadius: 3,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
+    textAlign: 'center',
+    flexShrink: 0,
   },
   phaseChipCount: { fontWeight: 700, opacity: 0.85 },
   miniBtn: {

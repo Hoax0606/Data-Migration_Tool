@@ -11,15 +11,23 @@ interface Props {
 /**
  * Account profile 모달 — 현재 로그인한 사용자의 로컬 계정 정보.
  */
+function formatDt(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export function AccountProfileModal({ open, onClose }: Props) {
   const t = useT();
   const user = useAuthStore((s) => s.user);
+  const lastSignInAt = useAuthStore((s) => s.lastSignInAt);
+  const loginAt = useAuthStore((s) => s.loginAt);
   const [pwOpen, setPwOpen] = useState(false);
 
-  // Placeholder values — 추후 실제 백엔드 데이터로 교체
-  const lastSignIn = '2026-05-13 09:42:18 JST';
-  const sessionStart = 'since 2026-05-13 09:42';
-  const lastPwChange = '2026-04-01';
+  const lastSignIn = formatDt(lastSignInAt);
+  const sessionStart = loginAt ? `since ${formatDt(loginAt)}` : '—';
+  const lastPwChange = '—'; // 비밀번호 변경 기능 구현 시 교체
 
   const role = roleLabel(user?.role);
 

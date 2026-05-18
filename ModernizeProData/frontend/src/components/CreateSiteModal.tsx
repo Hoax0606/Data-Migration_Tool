@@ -80,7 +80,7 @@ export function CreateSiteModal({ open, onClose }: Props) {
 
   const blockedByProd = stage === 'production' && !isMaster;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || blockedByProd) return;
     // type 이 비어있는 단계는 저장하지 않음 — DB 미선택 상태로 둠.
@@ -94,7 +94,7 @@ export function CreateSiteModal({ open, onClose }: Props) {
     for (const env of PROJECT_ENVIRONMENTS) {
       if (finalByEnv[env]) finalLocks[env] = true;
     }
-    createSite({
+    await createSite({
       name: name.trim(),
       asisEnv,
       tobeEnv,
@@ -284,11 +284,11 @@ function StagePills({
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <label style={styles.field}>
+    <div style={styles.field}>
       <div style={styles.label}>{label}</div>
       {hint && <div style={styles.hint}>{hint}</div>}
       {children}
-    </label>
+    </div>
   );
 }
 

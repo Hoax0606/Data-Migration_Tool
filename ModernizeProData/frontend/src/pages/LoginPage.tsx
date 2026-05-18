@@ -21,7 +21,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.login({ username, password });
-      setAuth(res.token, { username: res.username, role: res.role }, res.expiresAt);
+      setAuth(res.token, { username: res.username, role: res.role }, res.expiresAt, res.lastSignInAt);
       navigate('/');
     } catch (err) {
       if (err instanceof ApiError) {

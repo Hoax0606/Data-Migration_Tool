@@ -39,10 +39,10 @@ export function CreateProjectModal({ open, onClose }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !activeSite) return;
-    createProject({
+    await createProject({
       name: name.trim(),
       phase: 'planning',
       tableCount: 0,
